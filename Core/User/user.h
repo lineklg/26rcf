@@ -15,6 +15,7 @@
 #include "encoder.h"
 #include "motor.h"
 #include "behavior.h"
+#include "time_us.h"
 
 void User_Init(void);
 void User_Update(void);
