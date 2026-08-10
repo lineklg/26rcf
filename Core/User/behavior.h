@@ -5,8 +5,9 @@
 #include <stdint.h>
 
 void BaseMotor_Init(void);
-void BaseMotor_Forward(uint16_t speed);
-void BaseMotor_Turn(uint8_t direction, uint16_t time, uint16_t speed);
+void BaseMotor_Forward(float speed);
+void BaseMotor_Turn(float speed);
+void BaseMotor_Stop(void);
 
 void Voice_BroadCast(uint16_t situation);
 
