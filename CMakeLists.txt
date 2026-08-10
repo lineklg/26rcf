@@ -36,6 +36,7 @@ add_executable(${CMAKE_PROJECT_NAME})
 
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
     -u _printf_float
+    -u _scanf_float
 )
 
 # Add STM32CubeMX generated sources
