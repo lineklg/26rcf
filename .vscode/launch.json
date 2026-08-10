@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "DAPLink: STM32H723 (SWD)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/Debug/26rcf.elf",
+            "servertype": "openocd",
+            "serverpath": "${config:stm32cubeide.openocdPath}",
+            "gdbPath": "${config:stm32cubeide.gdbPath}",
+            "configFiles": [
+                "interface/cmsis-dap.cfg",
+                "target/stm32h7x.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "transport select swd",
+                "adapter speed 4000"
+            ],
+            "device": "STM32H723ZGTx",
+            "runToEntryPoint": "main",
+            "preLaunchTask": "CMake: Build Debug",
+            "showDevDebugOutput": "raw"
+        }
+    ]
+}
