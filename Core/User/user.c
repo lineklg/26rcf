@@ -30,6 +30,7 @@ void Servo_Test(void)
     {
         servo_state = 0;
     }
+    HAL_GPIO_TogglePin(PUMP_GPIO_Port, PUMP_Pin);
 }
 
 void User_Init(void)
