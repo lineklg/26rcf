@@ -8,7 +8,7 @@ Encoder motor_enc[4];
 Motor motor[4];
 ServoPosition arm_servo[3];
 
-void BaseMotor_Init(void)
+void Wheel_Init(void)
 {
     DRV8870_Motor_Init(&motor_ic[0], &htim4, TIM_CHANNEL_3, TIM_CHANNEL_4, 0);
     DRV8870_Motor_Init(&motor_ic[1], &htim4, TIM_CHANNEL_1, TIM_CHANNEL_2, 1);
@@ -26,7 +26,7 @@ void BaseMotor_Init(void)
     motor[3] = Motor_Init(&motor_enc[3], 990, 0.267, TimeUs_Get, NULL, NULL, 0);
 }
 
-void BaseMotor_Forward(float speed)
+void Wheel_Forward(float speed)
 {
     for (uint8_t i = 0; i < 4; i++)
     {
@@ -34,7 +34,7 @@ void BaseMotor_Forward(float speed)
     }
 }
 
-void BaseMotor_Turn(float speed)
+void Wheel_Turn(float speed)
 {
     DRV8870_SetDutyPercent(&motor_ic[0], -speed);
     DRV8870_SetDutyPercent(&motor_ic[1], speed);
@@ -42,7 +42,7 @@ void BaseMotor_Turn(float speed)
     DRV8870_SetDutyPercent(&motor_ic[3], speed);
 }
 
-void BaseMotor_Stop(void)
+void Wheel_Stop(void)
 {
     for (uint8_t i = 0; i < 4; i++)
     {

@@ -9,10 +9,10 @@ extern Encoder motor_enc[4];
 extern Motor motor[4];
 extern ServoPosition arm_servo[3]; // 0-2:yaw first second
 
-void BaseMotor_Init(void);
-void BaseMotor_Forward(float speed);
-void BaseMotor_Turn(float speed);
-void BaseMotor_Stop(void);
+void Wheel_Init(void);
+void Wheel_Forward(float speed);
+void Wheel_Turn(float speed);
+void Wheel_Stop(void);
 
 void Voice_BroadCast(uint16_t situation);
 

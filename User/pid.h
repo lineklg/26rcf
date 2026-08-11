@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "task.h"
 
-#define PID_MAX_COUNT           6
+#define PID_MAX_COUNT           9
 
 typedef struct
 {
