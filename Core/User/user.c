@@ -1,7 +1,6 @@
 #include "user.h"
 
-Task *servo_test;
-uint8_t servo_state;
+uint8_t speed_hex;
 
 // 0：空闲/设置 1：A区灌溉 2：移动到B区 3：B区灌溉 6:移动到终点区
 StateMachine main_state_machine; 
@@ -22,17 +21,6 @@ uint8_t area_B_sequence[4];
 uint8_t area_B_situation[4];
 uint8_t area_B_current_position;
 
-void Servo_Test(void)
-{
-    Arm_RoughAdjustment(servo_state);
-    servo_state++;
-    if (servo_state >= 3)
-    {
-        servo_state = 0;
-    }
-    HAL_GPIO_TogglePin(PUMP_GPIO_Port, PUMP_Pin);
-}
-
 void User_Init(void)
 {
     TimeUs_Init();
@@ -44,10 +32,9 @@ void User_Init(void)
     Arm_Init();
     Arm_RoughAdjustment(0);
 
-    Task_CreateAndStart(&servo_test, Servo_Test, TASK_PERIOD, (Task_ExtraData){.period = 7000});
+    speed_hex = 128;
 
-    servo_state = 0;
-
+    HAL_UART_Receive_IT(&huart1, &speed_hex, 1);
 }
 
 void User_Update(void)
@@ -109,4 +96,13 @@ void Area_B_State_Change(uint16_t state_id, uint8_t enter_or_exit)
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     Encoder_GPIO_EXTI_Callback(GPIO_Pin);
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &huart1)
+  {
+    Wheel_Forward(((float)speed_hex / 256.0 - 0.5) * 1.5) ;
+    HAL_UART_Receive_IT(&huart1, &speed_hex, 1);
+  }
 }

@@ -26,5 +26,6 @@ void Area_A_State_Change(uint16_t state_id, uint8_t enter_or_exit);
 void Area_B_State_Change(uint16_t state_id, uint8_t enter_or_exit);
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 
 #endif // !USER_H

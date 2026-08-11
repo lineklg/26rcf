@@ -1,5 +1,6 @@
 #include "wheel_pid.h"
 #include "task.h"
+#include "vofa.h"
 
 #include <assert.h>
 #include <math.h>
@@ -15,6 +16,13 @@ static DRV8870_Motor drivers[WHEEL_PID_COUNT];
 static float feedback[WHEEL_PID_COUNT];
 static float output[WHEEL_PID_COUNT];
 static uint32_t output_count[WHEEL_PID_COUNT];
+UART_HandleTypeDef huart1;
+static UART_HandleTypeDef *vofa_uart;
+static float vofa_data[WHEEL_PID_COUNT * 3U];
+static uint8_t vofa_channel_num;
+static uint32_t vofa_send_count;
+static uint32_t output_count_at_send[WHEEL_PID_COUNT];
+static HAL_StatusTypeDef vofa_status;
 
 /**
  * @brief 返回主机测试使用的毫秒时基。
@@ -66,6 +74,31 @@ void DRV8870_SetDutyPercent(DRV8870_Motor *motor, float percent)
 }
 
 /**
+ * @brief 捕获轮速任务发出的 VOFA+ JustFloat 数据。
+ * @param[in,out] huart UART 句柄。
+ * @param[in] data 待发送的浮点数据。
+ * @param[in] channel_num 浮点数据通道数。
+ * @return 预设的 HAL 状态。
+ */
+HAL_StatusTypeDef VOFA_JustFloat_UART_Send(
+    UART_HandleTypeDef *huart,
+    const float *data,
+    uint8_t channel_num
+)
+{
+    size_t i;
+
+    vofa_uart = huart;
+    vofa_channel_num = channel_num;
+    vofa_send_count++;
+    memcpy(vofa_data, data, sizeof(vofa_data));
+    for (i = 0U; i < WHEEL_PID_COUNT; i++) {
+        output_count_at_send[i] = output_count[i];
+    }
+    return vofa_status;
+}
+
+/**
  * @brief 重置四轮 PID 测试夹具。
  * @return 无。
  */
@@ -77,6 +110,13 @@ static void reset_fixture(void)
     memset(feedback, 0, sizeof(feedback));
     memset(output, 0, sizeof(output));
     memset(output_count, 0, sizeof(output_count));
+    memset(&huart1, 0, sizeof(huart1));
+    vofa_uart = NULL;
+    memset(vofa_data, 0, sizeof(vofa_data));
+    vofa_channel_num = 0U;
+    vofa_send_count = 0U;
+    memset(output_count_at_send, 0, sizeof(output_count_at_send));
+    vofa_status = HAL_OK;
     Task_Init(fake_get_tick);
     WheelPID_Init(motors, drivers);
 }
@@ -242,6 +282,75 @@ static void test_invalid_wheel_index_does_not_change_pid(void)
 }
 
 /**
+ * @brief 验证四轮 PWM 写入后发送一帧固定顺序的 VOFA 数据。
+ * @return 无。
+ */
+static void test_vofa_sends_one_ordered_frame_after_pwm(void)
+{
+    const float expected[WHEEL_PID_COUNT * 3U] = {
+        0.8f, 0.0f, 0.8f,
+        0.8f, 0.1f, 0.7f,
+        0.8f, 0.2f, 0.6f,
+        0.8f, 0.3f, 0.5f
+    };
+    size_t i;
+
+    reset_fixture();
+    feedback[0] = 0.0f;
+    feedback[1] = 0.1f;
+    feedback[2] = 0.2f;
+    feedback[3] = 0.3f;
+    WheelPID_Forward(0.8f);
+    run_next_period();
+
+    assert(vofa_send_count == 1U);
+    assert(vofa_uart == &huart1);
+    assert(vofa_channel_num == (uint8_t)(WHEEL_PID_COUNT * 3U));
+    for (i = 0U; i < WHEEL_PID_COUNT * 3U; i++) {
+        assert_float_close(vofa_data[i], expected[i]);
+    }
+    for (i = 0U; i < WHEEL_PID_COUNT; i++) {
+        assert(output_count_at_send[i] == 1U);
+    }
+}
+
+/**
+ * @brief 验证速度环停止后不再发送 VOFA 数据。
+ * @return 无。
+ */
+static void test_stop_prevents_vofa_send(void)
+{
+    uint32_t sends_after_stop;
+
+    reset_fixture();
+    WheelPID_Forward(0.5f);
+    run_next_period();
+
+    WheelPID_Stop();
+    sends_after_stop = vofa_send_count;
+    run_next_period();
+
+    assert(vofa_send_count == sends_after_stop);
+}
+
+/**
+ * @brief 验证 VOFA 串口错误不会改变四轮 PWM 输出。
+ * @return 无。
+ */
+static void test_vofa_error_does_not_change_pwm_outputs(void)
+{
+    const float expected[WHEEL_PID_COUNT] = {0.5f, 0.5f, 0.5f, 0.5f};
+
+    reset_fixture();
+    vofa_status = HAL_ERROR;
+    WheelPID_Forward(0.5f);
+    run_next_period();
+
+    assert(vofa_send_count == 1U);
+    assert_outputs(expected);
+}
+
+/**
  * @brief 运行四轮 PID 主机测试。
  * @return 全部断言通过时返回 0。
  */
@@ -254,5 +363,8 @@ int main(void)
     test_running_command_keeps_integral_history();
     test_stop_sleeps_task_and_restart_clears_history();
     test_invalid_wheel_index_does_not_change_pid();
+    test_vofa_sends_one_ordered_frame_after_pwm();
+    test_stop_prevents_vofa_send();
+    test_vofa_error_does_not_change_pwm_outputs();
     return 0;
 }

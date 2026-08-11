@@ -103,7 +103,6 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_Delay(100);
   User_Init();
-
   
   /* USER CODE END 2 */
 

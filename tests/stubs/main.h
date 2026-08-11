@@ -41,6 +41,13 @@ typedef enum {
 } HAL_StatusTypeDef;
 
 /**
+ * @brief 主机测试使用的最小 UART 句柄。
+ */
+typedef struct {
+    uint32_t instance;
+} UART_HandleTypeDef;
+
+/**
  * @brief 主机测试使用的最小定时器寄存器集合。
  */
 typedef struct {

@@ -1,6 +1,8 @@
 #include "wheel_pid.h"
 
 #include "pid.h"
+#include "usart.h"
+#include "vofa.h"
 
 #include <stddef.h>
 
@@ -29,6 +31,20 @@ static void WheelPID_Start(void)
     }
 }
 
+static float WheelPID_FeedForward(float target_speed)
+{
+    float result = 0;
+    if (target_speed > 0)
+    {
+        result = 0.5f + 0.2f * target_speed;
+    }
+    if (target_speed < 0)
+    {
+        result = -0.5f + 0.2f * target_speed;
+    }
+    return result;
+}
+
 /**
  * @brief 初始化四轮速度 PID 控制器。
  * @param[in,out] motors 四个车轮电机对象。
@@ -51,7 +67,7 @@ void WheelPID_Init(
     for (i = 0U; i < WHEEL_PID_COUNT; i++) {
         wheel_pid[i] = NULL;
         wheel_target[i] = 0.0f;
-        PID_Create(&wheel_pid[i], 1.0f, 0.0f, 0.0f);
+        PID_Create(&wheel_pid[i], 0.1f, 0.05f, 0.0f);
         if (wheel_pid[i] != NULL) {
             PID_SetOutputMax(wheel_pid[i], 1.0f);
         }
@@ -69,6 +85,10 @@ void WheelPID_Forward(float speed)
 
     for (i = 0U; i < WHEEL_PID_COUNT; i++) {
         wheel_target[i] = speed;
+        if (i == 0 || i == 2)
+        {
+            wheel_target[i] *= 0.985;
+        }
     }
     WheelPID_Start();
 }
@@ -127,6 +147,7 @@ void WheelPID_Stop(void)
 void PID_Task(void)
 {
     uint8_t i;
+    float vofa_data[WHEEL_PID_COUNT * 3U] = {0.0f};
 
     if ((wheel_pid_running == 0U) ||
         (wheel_motor == NULL) ||
@@ -137,12 +158,22 @@ void PID_Task(void)
     for (i = 0U; i < WHEEL_PID_COUNT; i++) {
         float feedback;
         float output;
+        uint8_t channel = i * 3U;
 
+        vofa_data[channel] = wheel_target[i];
         if (wheel_pid[i] == NULL) {
             continue;
         }
         feedback = Motor_CalcSpeed_Smooth(&wheel_motor[i]);
         output = PID_Calc(wheel_pid[i], wheel_target[i], feedback);
-        DRV8870_SetDutyPercent(&wheel_driver[i], output);
+        vofa_data[channel + 1U] = feedback;
+        vofa_data[channel + 2U] = output;
+        DRV8870_SetDutyPercent(&wheel_driver[i], output + WheelPID_FeedForward(wheel_target[i]));
     }
+
+    VOFA_JustFloat_UART_Send(
+        &huart1,
+        vofa_data,
+        (uint8_t)(WHEEL_PID_COUNT * 3U)
+    );
 }
