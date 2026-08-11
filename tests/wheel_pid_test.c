@@ -187,6 +187,61 @@ static void test_output_is_limited(void)
 }
 
 /**
+ * @brief 验证运行中重复设置目标不会清除积分历史。
+ * @return 无。
+ */
+static void test_running_command_keeps_integral_history(void)
+{
+    reset_fixture();
+    WheelPID_SetK(0U, 0.0f, 1.0f, 0.0f);
+    WheelPID_Forward(1.0f);
+    run_next_period();
+    assert_float_close(output[0], 0.02f);
+
+    WheelPID_Forward(1.0f);
+    run_next_period();
+    assert_float_close(output[0], 0.04f);
+}
+
+/**
+ * @brief 验证停止后任务休眠且重新启动会清除积分历史。
+ * @return 无。
+ */
+static void test_stop_sleeps_task_and_restart_clears_history(void)
+{
+    uint32_t writes_after_stop;
+
+    reset_fixture();
+    WheelPID_SetK(0U, 0.0f, 1.0f, 0.0f);
+    WheelPID_Forward(1.0f);
+    run_next_period();
+
+    WheelPID_Stop();
+    writes_after_stop = output_count[0];
+    run_next_period();
+    assert(output_count[0] == writes_after_stop);
+
+    WheelPID_Forward(0.0f);
+    run_next_period();
+    assert_float_close(output[0], 0.0f);
+}
+
+/**
+ * @brief 验证无效轮号不会改变任一有效轮子的 PID 参数。
+ * @return 无。
+ */
+static void test_invalid_wheel_index_does_not_change_pid(void)
+{
+    const float expected[WHEEL_PID_COUNT] = {0.5f, 0.5f, 0.5f, 0.5f};
+
+    reset_fixture();
+    WheelPID_SetK(WHEEL_PID_COUNT, 0.0f, 0.0f, 0.0f);
+    WheelPID_Forward(0.5f);
+    run_next_period();
+    assert_outputs(expected);
+}
+
+/**
  * @brief 运行四轮 PID 主机测试。
  * @return 全部断言通过时返回 0。
  */
@@ -196,5 +251,8 @@ int main(void)
     test_turn_sets_opposite_targets();
     test_each_wheel_uses_its_feedback();
     test_output_is_limited();
+    test_running_command_keeps_integral_history();
+    test_stop_sleeps_task_and_restart_clears_history();
+    test_invalid_wheel_index_does_not_change_pid();
     return 0;
 }

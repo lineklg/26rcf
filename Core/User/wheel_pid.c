@@ -88,6 +88,39 @@ void WheelPID_Turn(float speed)
 }
 
 /**
+ * @brief 设置指定车轮的 PID 参数。
+ * @param[in] index 车轮索引。
+ * @param[in] kp 比例系数。
+ * @param[in] ki 积分系数。
+ * @param[in] kd 微分系数。
+ * @return 无。
+ */
+void WheelPID_SetK(uint8_t index, float kp, float ki, float kd)
+{
+    if ((index < WHEEL_PID_COUNT) && (wheel_pid[index] != NULL)) {
+        PID_SetK(wheel_pid[index], kp, ki, kd);
+    }
+}
+
+/**
+ * @brief 停止四轮速度环并清除目标与 PID 历史。
+ * @return 无。
+ */
+void WheelPID_Stop(void)
+{
+    uint8_t i;
+
+    PID_Stop();
+    wheel_pid_running = 0U;
+    for (i = 0U; i < WHEEL_PID_COUNT; i++) {
+        wheel_target[i] = 0.0f;
+        if (wheel_pid[i] != NULL) {
+            PID_ResetHistory(wheel_pid[i]);
+        }
+    }
+}
+
+/**
  * @brief 执行一次四轮速度 PID 计算并写入驱动占空比。
  * @return 无。
  */
