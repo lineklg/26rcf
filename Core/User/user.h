@@ -14,6 +14,7 @@
 #include "servo_position.h"
 #include "encoder.h"
 #include "motor.h"
+#include "wheel_pid.h"
 #include "behavior.h"
 #include "time_us.h"
 

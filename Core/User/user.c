@@ -36,6 +36,7 @@ void User_Init(void)
 {
     TimeUs_Init();
     Task_Init(HAL_GetTick);
+    Wheel_Init();
     StateMachine_Init(&main_state_machine, 0, Main_State_Change);
     StateMachine_Init(&area_A_state_machine, STATE_MACHINE_NO_STATE, Main_State_Change);
     StateMachine_Init(&area_B_state_machine, STATE_MACHINE_NO_STATE, Main_State_Change);

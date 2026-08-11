@@ -24,26 +24,24 @@ void Wheel_Init(void)
     motor[1] = Motor_Init(&motor_enc[1], 990, 0.267, TimeUs_Get, NULL, NULL, 0);
     motor[2] = Motor_Init(&motor_enc[2], 990, 0.267, TimeUs_Get, NULL, NULL, 0);
     motor[3] = Motor_Init(&motor_enc[3], 990, 0.267, TimeUs_Get, NULL, NULL, 0);
+
+    WheelPID_Init(motor, motor_ic);
+    Wheel_Stop();
 }
 
 void Wheel_Forward(float speed)
 {
-    for (uint8_t i = 0; i < 4; i++)
-    {
-        DRV8870_SetDutyPercent(&motor_ic[i], speed);
-    }
+    WheelPID_Forward(speed);
 }
 
 void Wheel_Turn(float speed)
 {
-    DRV8870_SetDutyPercent(&motor_ic[0], -speed);
-    DRV8870_SetDutyPercent(&motor_ic[1], speed);
-    DRV8870_SetDutyPercent(&motor_ic[2], -speed);
-    DRV8870_SetDutyPercent(&motor_ic[3], speed);
+    WheelPID_Turn(speed);
 }
 
 void Wheel_Stop(void)
 {
+    WheelPID_Stop();
     for (uint8_t i = 0; i < 4; i++)
     {
         DRV8870_Brake(&motor_ic[i]);
