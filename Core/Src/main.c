@@ -45,10 +45,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-DRV8870_Motor motor_A;
-DRV8870_Motor motor_B;
-DRV8870_Motor motor_C;
-DRV8870_Motor motor_D;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -102,6 +99,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
+  MX_UART9_Init();
   /* USER CODE BEGIN 2 */
   HAL_Delay(100);
   User_Init();

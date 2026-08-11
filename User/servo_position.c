@@ -8,6 +8,17 @@ static uint8_t ServoPosition_IsValidChannel(uint32_t channel)
            (channel == TIM_CHANNEL_4);
 }
 
+/**
+ * @brief 检查 PWM 输出类型是否有效。
+ * @param[in] output PWM 输出类型。
+ * @return 有效时返回非零值，否则返回零。
+ */
+static uint8_t ServoPosition_IsValidOutput(ServoPositionOutput output)
+{
+    return (output == SERVO_POSITION_OUTPUT_MAIN) ||
+           (output == SERVO_POSITION_OUTPUT_COMPLEMENTARY);
+}
+
 static uint8_t ServoPosition_IsReady(const ServoPosition *servo)
 {
     return (servo != NULL) &&
@@ -20,6 +31,7 @@ static void ServoPosition_Clear(ServoPosition *servo)
 {
     servo->htim = NULL;
     servo->channel = 0U;
+    servo->output = SERVO_POSITION_OUTPUT_MAIN;
     servo->pwmPeriod = 0U;
     servo->minCompare = 0U;
     servo->centerCompare = 0U;
@@ -72,6 +84,7 @@ HAL_StatusTypeDef ServoPosition_Init(
     ServoPosition *servo,
     TIM_HandleTypeDef *htim,
     uint32_t channel,
+    ServoPositionOutput output,
     uint32_t minCompare,
     uint32_t centerCompare,
     uint32_t maxCompare
@@ -80,7 +93,8 @@ HAL_StatusTypeDef ServoPosition_Init(
     if ((servo == NULL) ||
         (htim == NULL) ||
         (htim->Instance == NULL) ||
-        !ServoPosition_IsValidChannel(channel))
+        !ServoPosition_IsValidChannel(channel) ||
+        !ServoPosition_IsValidOutput(output))
     {
         return HAL_ERROR;
     }
@@ -96,6 +110,7 @@ HAL_StatusTypeDef ServoPosition_Init(
 
     servo->htim = htim;
     servo->channel = channel;
+    servo->output = output;
     servo->pwmPeriod = pwmPeriod;
     servo->minCompare = minCompare;
     servo->centerCompare = centerCompare;
@@ -104,7 +119,10 @@ HAL_StatusTypeDef ServoPosition_Init(
 
     __HAL_TIM_SET_COMPARE(htim, channel, centerCompare);
 
-    const HAL_StatusTypeDef status = HAL_TIM_PWM_Start(htim, channel);
+    const HAL_StatusTypeDef status =
+        (output == SERVO_POSITION_OUTPUT_COMPLEMENTARY)
+            ? HAL_TIMEx_PWMN_Start(htim, channel)
+            : HAL_TIM_PWM_Start(htim, channel);
     if (status != HAL_OK)
     {
         ServoPosition_Clear(servo);
@@ -158,7 +176,9 @@ HAL_StatusTypeDef ServoPosition_DeInit(ServoPosition *servo)
 
     ServoPosition_Stop(servo);
     const HAL_StatusTypeDef status =
-        HAL_TIM_PWM_Stop(servo->htim, servo->channel);
+        (servo->output == SERVO_POSITION_OUTPUT_COMPLEMENTARY)
+            ? HAL_TIMEx_PWMN_Stop(servo->htim, servo->channel)
+            : HAL_TIM_PWM_Stop(servo->htim, servo->channel);
     ServoPosition_Clear(servo);
     return status;
 }

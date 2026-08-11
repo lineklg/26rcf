@@ -4,7 +4,16 @@
 #include "main.h"
 
 /**
- * @brief 普通位置舵机控制器。
+ * @brief 位置舵机使用的 PWM 输出类型。
+ */
+typedef enum
+{
+    SERVO_POSITION_OUTPUT_MAIN = 0U,          /**< 普通 PWM 输出。 */
+    SERVO_POSITION_OUTPUT_COMPLEMENTARY = 1U /**< 互补 PWM 输出。 */
+} ServoPositionOutput;
+
+/**
+ * @brief 位置舵机控制器。
  *
  * 位置舵机通过 PWM 脉宽表示目标角度。position 使用 -1.0f 到 1.0f 的归一化
  * 表示：-1.0f 对应最小位置，0.0f 对应中位，1.0f 对应最大位置。
@@ -12,13 +21,14 @@
  */
 typedef struct
 {
-    TIM_HandleTypeDef *htim; /**< PWM 定时器句柄。 */
-    uint32_t channel;        /**< PWM 通道。 */
-    uint32_t pwmPeriod;      /**< 定时器自动重装载值（ARR）。 */
-    uint32_t minCompare;     /**< 最小位置对应的比较值。 */
-    uint32_t centerCompare;  /**< 中位位置对应的比较值。 */
-    uint32_t maxCompare;     /**< 最大位置对应的比较值。 */
-    uint8_t initialized;     /**< 非零表示已经成功初始化并启动 PWM。 */
+    TIM_HandleTypeDef *htim;    /**< PWM 定时器句柄。 */
+    uint32_t channel;           /**< PWM 通道。 */
+    ServoPositionOutput output; /**< PWM 输出类型。 */
+    uint32_t pwmPeriod;         /**< 定时器自动重装载值（ARR）。 */
+    uint32_t minCompare;        /**< 最小位置对应的比较值。 */
+    uint32_t centerCompare;     /**< 中位位置对应的比较值。 */
+    uint32_t maxCompare;        /**< 最大位置对应的比较值。 */
+    uint8_t initialized;        /**< 非零表示已经成功初始化并启动 PWM。 */
 } ServoPosition;
 
 /**
@@ -30,6 +40,7 @@ typedef struct
  * @param[out] servo 待初始化的位置舵机实例，不能为 NULL。
  * @param[in] htim 已完成 PWM 配置的定时器句柄，不能为 NULL。
  * @param[in] channel 要使用的 PWM 通道（TIM_CHANNEL_1 到 TIM_CHANNEL_4）。
+ * @param[in] output PWM 输出类型。
  * @param[in] minCompare 最小位置对应的比较值。
  * @param[in] centerCompare 中位位置对应的比较值。
  * @param[in] maxCompare 最大位置对应的比较值。
@@ -39,6 +50,7 @@ HAL_StatusTypeDef ServoPosition_Init(
     ServoPosition *servo,
     TIM_HandleTypeDef *htim,
     uint32_t channel,
+    ServoPositionOutput output,
     uint32_t minCompare,
     uint32_t centerCompare,
     uint32_t maxCompare

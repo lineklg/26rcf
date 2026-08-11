@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define TASK_QUEUE_SIZE             20
+#define TASK_QUEUE_SIZE             64
 #define TASK_PERIOD_MAX             (UINT32_MAX / 2)
 
 typedef struct sTask Task;

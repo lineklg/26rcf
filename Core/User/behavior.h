@@ -4,6 +4,11 @@
 #include "user.h"
 #include <stdint.h>
 
+extern DRV8870_Motor motor_ic[4];  // 0-3:A-D
+extern Encoder motor_enc[4];
+extern Motor motor[4];
+extern ServoPosition arm_servo[3]; // 0-2:yaw first second
+
 void BaseMotor_Init(void);
 void BaseMotor_Forward(float speed);
 void BaseMotor_Turn(float speed);

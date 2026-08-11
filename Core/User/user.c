@@ -1,5 +1,8 @@
 #include "user.h"
 
+Task *servo_test;
+uint8_t servo_state;
+
 // 0：空闲/设置 1：A区灌溉 2：移动到B区 3：B区灌溉 6:移动到终点区
 StateMachine main_state_machine; 
 
@@ -19,6 +22,16 @@ uint8_t area_B_sequence[4];
 uint8_t area_B_situation[4];
 uint8_t area_B_current_position;
 
+void Servo_Test(void)
+{
+    Arm_RoughAdjustment(servo_state);
+    servo_state++;
+    if (servo_state >= 3)
+    {
+        servo_state = 0;
+    }
+}
+
 void User_Init(void)
 {
     TimeUs_Init();
@@ -26,6 +39,13 @@ void User_Init(void)
     StateMachine_Init(&main_state_machine, 0, Main_State_Change);
     StateMachine_Init(&area_A_state_machine, STATE_MACHINE_NO_STATE, Main_State_Change);
     StateMachine_Init(&area_B_state_machine, STATE_MACHINE_NO_STATE, Main_State_Change);
+    Arm_Init();
+    Arm_RoughAdjustment(0);
+
+    Task_CreateAndStart(&servo_test, Servo_Test, TASK_PERIOD, (Task_ExtraData){.period = 7000});
+
+    servo_state = 0;
+
 }
 
 void User_Update(void)
@@ -86,5 +106,5 @@ void Area_B_State_Change(uint16_t state_id, uint8_t enter_or_exit)
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-
+    Encoder_GPIO_EXTI_Callback(GPIO_Pin);
 }

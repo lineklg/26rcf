@@ -3,10 +3,10 @@
 #include "SYN6288.h"
 #include "stm32h7xx_hal_tim.h"
 
-static DRV8870_Motor motor_ic[4];  // 0-4:A-D
-static Encoder motor_enc[4];
-static Motor motor[4];
-static ServoPosition arm_servo[3];
+DRV8870_Motor motor_ic[4];
+Encoder motor_enc[4];
+Motor motor[4];
+ServoPosition arm_servo[3];
 
 void BaseMotor_Init(void)
 {
@@ -30,23 +30,23 @@ void BaseMotor_Forward(float speed)
 {
     for (uint8_t i = 0; i < 4; i++)
     {
-        DRV8870_SetDutyPercent(&motor[i], speed);
+        DRV8870_SetDutyPercent(&motor_ic[i], speed);
     }
 }
 
 void BaseMotor_Turn(float speed)
 {
-    DRV8870_SetDutyPercent(&motor[0], -speed);
-    DRV8870_SetDutyPercent(&motor[1], speed);
-    DRV8870_SetDutyPercent(&motor[2], -speed);
-    DRV8870_SetDutyPercent(&motor[3], speed);
+    DRV8870_SetDutyPercent(&motor_ic[0], -speed);
+    DRV8870_SetDutyPercent(&motor_ic[1], speed);
+    DRV8870_SetDutyPercent(&motor_ic[2], -speed);
+    DRV8870_SetDutyPercent(&motor_ic[3], speed);
 }
 
 void BaseMotor_Stop(void)
 {
     for (uint8_t i = 0; i < 4; i++)
     {
-        DRV8870_Brake(&motor[i]);
+        DRV8870_Brake(&motor_ic[i]);
     }
 }
 
@@ -80,9 +80,33 @@ void Pump_Stop(void)
 
 void Arm_Init(void)
 {
-    ServoPosition_Init(&arm_servo[0], &htim8, TIM_CHANNEL_1, 2750, 8750, 13750);
-    ServoPosition_Init(&arm_servo[1], &htim8, TIM_CHANNEL_2, 2750, 8750, 13750);
-    ServoPosition_Init(&arm_servo[2], &htim8, TIM_CHANNEL_3, 2750, 8750, 13750);
+    ServoPosition_Init(
+        &arm_servo[0],
+        &htim8,
+        TIM_CHANNEL_1,
+        SERVO_POSITION_OUTPUT_COMPLEMENTARY,
+        1375U,
+        4125U,
+        6875U
+    );
+    ServoPosition_Init(
+        &arm_servo[1],
+        &htim8,
+        TIM_CHANNEL_2,
+        SERVO_POSITION_OUTPUT_MAIN,
+        1375U,
+        4125U,
+        6875U
+    );
+    ServoPosition_Init(
+        &arm_servo[2],
+        &htim8,
+        TIM_CHANNEL_3,
+        SERVO_POSITION_OUTPUT_MAIN,
+        1375U,
+        4125U,
+        6875U
+    );
 }
 
 void Arm_RoughAdjustment(uint8_t direction)
@@ -90,20 +114,20 @@ void Arm_RoughAdjustment(uint8_t direction)
     switch (direction)
     {
     case 0:
-      ServoPosition_SetPosition(&arm_servo[0], 0.5);
-      ServoPosition_SetPosition(&arm_servo[1], -0.6);
-      ServoPosition_SetPosition(&arm_servo[2], -0.6);
-      break;
+        ServoPosition_SetPosition(&arm_servo[0], 0.5);
+        ServoPosition_SetPosition(&arm_servo[1], -0.6);
+        ServoPosition_SetPosition(&arm_servo[2], -0.6);
+        break;
     case 1:
-      ServoPosition_SetPosition(&arm_servo[0], 1);
-      ServoPosition_SetPosition(&arm_servo[1], -0.1);
-      ServoPosition_SetPosition(&arm_servo[2], -0.1);
-      break;
+        ServoPosition_SetPosition(&arm_servo[0], 1);
+        ServoPosition_SetPosition(&arm_servo[1], -0.1);
+        ServoPosition_SetPosition(&arm_servo[2], -0.1);
+        break;
     case 2:
-      ServoPosition_SetPosition(&arm_servo[0], 0);
-      ServoPosition_SetPosition(&arm_servo[1], -0.1);
-      ServoPosition_SetPosition(&arm_servo[2], -0.1);
-      break;
+        ServoPosition_SetPosition(&arm_servo[0], 0);
+        ServoPosition_SetPosition(&arm_servo[1], -0.1);
+        ServoPosition_SetPosition(&arm_servo[2], -0.1);
+        break;
     default:
         break;
     }
