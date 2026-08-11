@@ -1,0 +1,115 @@
+#include "wheel_pid.h"
+
+#include "pid.h"
+
+#include <stddef.h>
+
+static PID *wheel_pid[WHEEL_PID_COUNT];
+static Motor *wheel_motor;
+static DRV8870_Motor *wheel_driver;
+static float wheel_target[WHEEL_PID_COUNT];
+static uint8_t wheel_pid_running;
+
+/**
+ * @brief 在停止状态下重置历史并启动四轮速度环。
+ * @return 无。
+ */
+static void WheelPID_Start(void)
+{
+    uint8_t i;
+
+    if (wheel_pid_running == 0U) {
+        for (i = 0U; i < WHEEL_PID_COUNT; i++) {
+            if (wheel_pid[i] != NULL) {
+                PID_ResetHistory(wheel_pid[i]);
+            }
+        }
+        wheel_pid_running = 1U;
+        PID_Start();
+    }
+}
+
+/**
+ * @brief 初始化四轮速度 PID 控制器。
+ * @param[in,out] motors 四个车轮电机对象。
+ * @param[in,out] drivers 四个车轮驱动对象。
+ * @return 无。
+ */
+void WheelPID_Init(
+    Motor motors[WHEEL_PID_COUNT],
+    DRV8870_Motor drivers[WHEEL_PID_COUNT]
+)
+{
+    uint8_t i;
+
+    wheel_motor = motors;
+    wheel_driver = drivers;
+    wheel_pid_running = 0U;
+
+    PID_Init();
+    PID_SetPeriodMs(WHEEL_PID_PERIOD_MS);
+    for (i = 0U; i < WHEEL_PID_COUNT; i++) {
+        wheel_pid[i] = NULL;
+        wheel_target[i] = 0.0f;
+        PID_Create(&wheel_pid[i], 1.0f, 0.0f, 0.0f);
+        if (wheel_pid[i] != NULL) {
+            PID_SetOutputMax(wheel_pid[i], 1.0f);
+        }
+    }
+}
+
+/**
+ * @brief 设置四轮同向直行目标速度并启动速度环。
+ * @param[in] speed 四个车轮的目标速度。
+ * @return 无。
+ */
+void WheelPID_Forward(float speed)
+{
+    uint8_t i;
+
+    for (i = 0U; i < WHEEL_PID_COUNT; i++) {
+        wheel_target[i] = speed;
+    }
+    WheelPID_Start();
+}
+
+/**
+ * @brief 设置原地转向目标速度并启动速度环。
+ * @param[in] speed B、D 轮目标速度，A、C 轮使用其相反数。
+ * @return 无。
+ */
+void WheelPID_Turn(float speed)
+{
+    wheel_target[0] = -speed;
+    wheel_target[1] = speed;
+    wheel_target[2] = -speed;
+    wheel_target[3] = speed;
+    WheelPID_Start();
+}
+
+/**
+ * @brief 执行一次四轮速度 PID 计算并写入驱动占空比。
+ * @return 无。
+ */
+void PID_Task(void)
+{
+    uint8_t i;
+
+    if ((wheel_pid_running == 0U) ||
+        (wheel_motor == NULL) ||
+        (wheel_driver == NULL)) {
+        return;
+    }
+
+    for (i = 0U; i < WHEEL_PID_COUNT; i++) {
+        float feedback;
+        float output;
+
+        if (wheel_pid[i] == NULL) {
+            continue;
+        }
+        feedback = Motor_CalcSpeed_Smooth(&wheel_motor[i]);
+        output = PID_Calc(wheel_pid[i], wheel_target[i], feedback);
+        DRV8870_SetDutyPercent(&wheel_driver[i], output);
+    }
+}
