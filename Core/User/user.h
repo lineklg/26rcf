@@ -17,6 +17,7 @@
 #include "wheel_pid.h"
 #include "behavior.h"
 #include "time_us.h"
+#include "usb_fs_vpc.h"
 
 void User_Init(void);
 void User_Update(void);

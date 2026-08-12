@@ -40,6 +40,7 @@ void User_Init(void)
 void User_Update(void)
 {
     Task_Update();
+    
 }
 
 void Main_State_Change(uint16_t state_id, uint8_t enter_or_exit)
