@@ -146,7 +146,10 @@ static void Assert_Targets(float a, float b, float c, float d)
     Assert_Close(sent_target[3], d);
 }
 
-/** @brief 验证四轮接口分别更新四个目标并自动启动速度环。 */
+/**
+ * @brief 验证四轮接口分别更新四个目标并自动启动速度环。
+ * @return 无。
+ */
 static void Test_SetSpeeds_Updates_All_Wheels_And_Starts(void)
 {
     Reset_Fixture();
@@ -156,7 +159,23 @@ static void Test_SetSpeeds_Updates_All_Wheels_And_Starts(void)
     Assert_Targets(0.1f, 0.2f, -0.3f, -0.4f);
 }
 
-/** @brief 验证单轮接口只更新指定轮子的目标。 */
+/**
+ * @brief 验证单轮接口从停止状态更新指定轮子并自动启动速度环。
+ * @return 无。
+ */
+static void Test_SetSpeed_Updates_One_Wheel_And_Starts(void)
+{
+    Reset_Fixture();
+    WheelPID_SetSpeed(1U, 0.25f);
+    Run_Current_Tick();
+    assert(send_count == 1U);
+    Assert_Targets(0.0f, 0.25f, 0.0f, 0.0f);
+}
+
+/**
+ * @brief 验证运行中的单轮接口只更新指定轮子的目标。
+ * @return 无。
+ */
 static void Test_SetSpeed_Only_Updates_Selected_Wheel(void)
 {
     Reset_Fixture();
@@ -168,7 +187,10 @@ static void Test_SetSpeed_Only_Updates_Selected_Wheel(void)
     Assert_Targets(0.1f, 0.2f, -0.6f, 0.4f);
 }
 
-/** @brief 验证无效轮号不修改目标且不会启动速度环。 */
+/**
+ * @brief 验证无效轮号不修改目标且不会启动速度环。
+ * @return 无。
+ */
 static void Test_Invalid_Index_Does_Not_Start_Or_Modify(void)
 {
     Reset_Fixture();
@@ -183,7 +205,10 @@ static void Test_Invalid_Index_Does_Not_Start_Or_Modify(void)
     Assert_Targets(0.1f, 0.2f, 0.3f, 0.4f);
 }
 
-/** @brief 验证运行中修改单轮目标不会清除 PID 积分历史。 */
+/**
+ * @brief 验证运行中修改单轮目标不会清除 PID 积分历史。
+ * @return 无。
+ */
 static void Test_Running_Update_Keeps_PID_History(void)
 {
     Reset_Fixture();
@@ -198,7 +223,10 @@ static void Test_Running_Update_Keeps_PID_History(void)
     Assert_Targets(0.2f, 0.0f, 0.0f, 0.0f);
 }
 
-/** @brief 验证现有直行、转向和停止接口行为保持不变。 */
+/**
+ * @brief 验证现有直行、转向和停止接口行为保持不变。
+ * @return 无。
+ */
 static void Test_Existing_Commands_Do_Not_Regress(void)
 {
     uint8_t i;
@@ -230,6 +258,7 @@ static void Test_Existing_Commands_Do_Not_Regress(void)
 int main(void)
 {
     Test_SetSpeeds_Updates_All_Wheels_And_Starts();
+    Test_SetSpeed_Updates_One_Wheel_And_Starts();
     Test_SetSpeed_Only_Updates_Selected_Wheel();
     Test_Invalid_Index_Does_Not_Start_Or_Modify();
     Test_Running_Update_Keeps_PID_History();
