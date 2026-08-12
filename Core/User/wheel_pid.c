@@ -36,11 +36,11 @@ static float WheelPID_FeedForward(float target_speed)
     float result = 0;
     if (target_speed > 0)
     {
-        result = 0.04f + 2.0f * target_speed;
+        result = 0.02f + 2.0f * target_speed;
     }
     if (target_speed < 0)
     {
-        result = -0.04f + 2.0f * target_speed;
+        result = -0.02f + 2.0f * target_speed;
     }
     return result;
     // return 0.805f * target_speed;
@@ -68,7 +68,7 @@ void WheelPID_Init(
     for (i = 0U; i < WHEEL_PID_COUNT; i++) {
         wheel_pid[i] = NULL;
         wheel_target[i] = 0.0f;
-        PID_Create(&wheel_pid[i], 1.3f, 0.4f, 0.0f);
+        PID_Create(&wheel_pid[i], 1.0f, 0.3f, 0.0f);
         if (wheel_pid[i] != NULL) {
             PID_SetOutputMax(wheel_pid[i], 1.0f);
             PID_SetIntegralMax(wheel_pid[i], (wheel_pid[i]->output_max / wheel_pid[i]->ki));
