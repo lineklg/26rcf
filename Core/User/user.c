@@ -1,7 +1,5 @@
 #include "user.h"
 
-uint8_t speed_hex;
-
 // 0：空闲/设置 1：A区灌溉 2：移动到B区 3：B区灌溉 6:移动到终点区
 StateMachine main_state_machine; 
 
@@ -21,6 +19,13 @@ uint8_t area_B_sequence[4];
 uint8_t area_B_situation[4];
 uint8_t area_B_current_position;
 
+/* Debug */
+// 0:正常数据 1:检测到帧尾 2:异常状态
+StateMachine debug_uart_rx_state_machine;
+
+uint8_t debug_uart_rx_buffer[40];
+uint8_t debug_uart_rx_buffer_count;
+
 void User_Init(void)
 {
     TimeUs_Init();
@@ -32,9 +37,8 @@ void User_Init(void)
     Arm_Init();
     Arm_RoughAdjustment(0);
 
-    speed_hex = 128;
-
-    HAL_UART_Receive_IT(&huart1, &speed_hex, 1);
+    debug_uart_rx_buffer_count = 0;
+    HAL_UART_Receive_IT(&huart1, &debug_uart_rx_buffer[0], 1);
 }
 
 void User_Update(void)
@@ -94,16 +98,56 @@ void Area_B_State_Change(uint16_t state_id, uint8_t enter_or_exit)
     }
 }
 
+static void Debug_UARTRx_Operation(void)
+{
+    switch (debug_uart_rx_buffer[0])
+    {
+    case 0x10:                              // 轮子直行 后面数据为速度 后3个字节为0xF0
+        float speed
+        break;
+    case 0x11:                              // 轮子转弯 后面数据为速度 后3个字节为0xF0
+        break;
+    case 0x12:                              // 停车 后3个字节为0xF0
+        break;                               
+    default:
+        break;
+    }
+}
+
+void Debug_UARTRx_State_Change(uint16_t state_id, uint8_t enter_or_exit)
+{
+    switch (state_id)
+    {
+    case 0:
+        break;
+    case 1:
+        Debug_UARTRx_Operation();
+        debug_uart_rx_buffer_count = 0;
+        break;
+    case 2:
+        debug_uart_rx_buffer_count = 0;
+        break;
+    default:
+        StateMachine_Change(&debug_uart_rx_state_machine, 2);
+    }
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart == &huart1)
+    {
+        HAL_UART_Receive_IT(&huart1, &debug_uart_rx_buffer[debug_uart_rx_buffer_count], 1);
+        if (debug_uart_rx_buffer[debug_uart_rx_buffer_count] == 0xF0 &&
+            debug_uart_rx_buffer[debug_uart_rx_buffer_count - 1] == 0xF0 &&
+            debug_uart_rx_buffer[debug_uart_rx_buffer_count - 2] == 0xF0)
+        {
+            StateMachine_Change(&debug_uart_rx_state_machine, 1);
+        }   
+    }
+}
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     Encoder_GPIO_EXTI_Callback(GPIO_Pin);
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-  if (huart == &huart1)
-  {
-    Wheel_Forward(((float)speed_hex / 256.0 - 0.5) * 0.5) ;
-    HAL_UART_Receive_IT(&huart1, &speed_hex, 1);
-  }
-}

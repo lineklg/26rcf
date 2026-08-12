@@ -59,20 +59,28 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define BM_C_EB_Pin GPIO_PIN_6
 #define BM_C_EB_GPIO_Port GPIOF
+#define BM_C_EB_EXTI_IRQn EXTI9_5_IRQn
 #define BM_A_EA_Pin GPIO_PIN_7
 #define BM_A_EA_GPIO_Port GPIOF
+#define BM_A_EA_EXTI_IRQn EXTI9_5_IRQn
 #define BM_B_EB_Pin GPIO_PIN_8
 #define BM_B_EB_GPIO_Port GPIOF
+#define BM_B_EB_EXTI_IRQn EXTI9_5_IRQn
 #define BM_B_EA_Pin GPIO_PIN_9
 #define BM_B_EA_GPIO_Port GPIOF
+#define BM_B_EA_EXTI_IRQn EXTI9_5_IRQn
 #define BM_D_EB_Pin GPIO_PIN_14
 #define BM_D_EB_GPIO_Port GPIOE
+#define BM_D_EB_EXTI_IRQn EXTI15_10_IRQn
 #define BM_D_EA_Pin GPIO_PIN_15
 #define BM_D_EA_GPIO_Port GPIOE
+#define BM_D_EA_EXTI_IRQn EXTI15_10_IRQn
 #define BM_C_EA_Pin GPIO_PIN_11
 #define BM_C_EA_GPIO_Port GPIOD
+#define BM_C_EA_EXTI_IRQn EXTI15_10_IRQn
 #define BM_A_EB_Pin GPIO_PIN_5
 #define BM_A_EB_GPIO_Port GPIOG
+#define BM_A_EB_EXTI_IRQn EXTI9_5_IRQn
 #define PUMP_Pin GPIO_PIN_10
 #define PUMP_GPIO_Port GPIOC
 
