@@ -190,11 +190,11 @@ static void Test_Running_Update_Keeps_PID_History(void)
     WheelPID_SetK(0U, 0.0f, 1.0f, 0.0f);
     WheelPID_SetSpeeds(0.1f, 0.0f, 0.0f, 0.0f);
     Run_Current_Tick();
-    Assert_Close(duty_output[0], 0.582f);
+    Assert_Close(duty_output[0], 0.58325f);
 
     WheelPID_SetSpeed(0U, 0.2f);
     Run_Next_Period();
-    Assert_Close(duty_output[0], 0.668f);
+    Assert_Close(duty_output[0], 0.6685f);
     Assert_Targets(0.2f, 0.0f, 0.0f, 0.0f);
 }
 

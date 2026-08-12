@@ -37,6 +37,29 @@ void WheelPID_Forward(float speed);
 void WheelPID_Turn(float speed);
 
 /**
+ * @brief 设置指定车轮的目标线速度并启动速度环。
+ * @param[in] index 车轮索引，0 至 3 分别对应 A 至 D 轮。
+ * @param[in] speed 目标线速度，单位为 m/s。
+ * @return 无。
+ */
+void WheelPID_SetSpeed(uint8_t index, float speed);
+
+/**
+ * @brief 分别设置 A、B、C、D 四轮目标线速度并启动速度环。
+ * @param[in] speed_a A 轮目标线速度，单位为 m/s。
+ * @param[in] speed_b B 轮目标线速度，单位为 m/s。
+ * @param[in] speed_c C 轮目标线速度，单位为 m/s。
+ * @param[in] speed_d D 轮目标线速度，单位为 m/s。
+ * @return 无。
+ */
+void WheelPID_SetSpeeds(
+    float speed_a,
+    float speed_b,
+    float speed_c,
+    float speed_d
+);
+
+/**
  * @brief 停止四轮速度 PID 控制器。
  * @return 无。
  */
