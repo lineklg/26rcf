@@ -20,6 +20,7 @@
 #include "main.h"
 #include "tim.h"
 #include "usart.h"
+#include "usb_device.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -100,6 +101,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
   MX_UART9_Init();
+  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
   HAL_Delay(100);
   User_Init();

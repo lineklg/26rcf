@@ -102,7 +102,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart == &huart1)
   {
-    Wheel_Forward(((float)speed_hex / 256.0 - 0.5) * 1.5) ;
+    Wheel_Forward(((float)speed_hex / 256.0 - 0.5) * 0.5) ;
     HAL_UART_Receive_IT(&huart1, &speed_hex, 1);
   }
 }

@@ -10,20 +10,20 @@ ServoPosition arm_servo[3];
 
 void Wheel_Init(void)
 {
-    DRV8870_Motor_Init(&motor_ic[0], &htim4, TIM_CHANNEL_3, TIM_CHANNEL_4, 0);
-    DRV8870_Motor_Init(&motor_ic[1], &htim4, TIM_CHANNEL_1, TIM_CHANNEL_2, 1);
-    DRV8870_Motor_Init(&motor_ic[2], &htim2, TIM_CHANNEL_3, TIM_CHANNEL_4, 1);
-    DRV8870_Motor_Init(&motor_ic[3], &htim12, TIM_CHANNEL_1, TIM_CHANNEL_2, 0);
+    DRV8870_Motor_Init(&motor_ic[3], &htim4, TIM_CHANNEL_3, TIM_CHANNEL_4, 0);
+    DRV8870_Motor_Init(&motor_ic[2], &htim4, TIM_CHANNEL_1, TIM_CHANNEL_2, 1);
+    DRV8870_Motor_Init(&motor_ic[1], &htim2, TIM_CHANNEL_3, TIM_CHANNEL_4, 1);
+    DRV8870_Motor_Init(&motor_ic[0], &htim12, TIM_CHANNEL_1, TIM_CHANNEL_2, 0);
 
     Encoder_Create_UsePin(&motor_enc[0], (GPIO_Pin){BM_A_EA_GPIO_Port, BM_A_EA_Pin}, (GPIO_Pin){BM_A_EB_GPIO_Port, BM_A_EB_Pin});
     Encoder_Create_UsePin(&motor_enc[1], (GPIO_Pin){BM_B_EA_GPIO_Port, BM_B_EA_Pin}, (GPIO_Pin){BM_B_EB_GPIO_Port, BM_B_EB_Pin});
     Encoder_Create_UsePin(&motor_enc[2], (GPIO_Pin){BM_C_EA_GPIO_Port, BM_C_EA_Pin}, (GPIO_Pin){BM_C_EB_GPIO_Port, BM_C_EB_Pin});
     Encoder_Create_UsePin(&motor_enc[3], (GPIO_Pin){BM_D_EA_GPIO_Port, BM_D_EA_Pin}, (GPIO_Pin){BM_D_EB_GPIO_Port, BM_D_EB_Pin});
     
-    motor[0] = Motor_Init(&motor_enc[0], 990, 0.267, TimeUs_Get, NULL, NULL, 1);
-    motor[1] = Motor_Init(&motor_enc[1], 990, 0.267, TimeUs_Get, NULL, NULL, 0);
-    motor[2] = Motor_Init(&motor_enc[2], 990, 0.267, TimeUs_Get, NULL, NULL, 1);
-    motor[3] = Motor_Init(&motor_enc[3], 990, 0.267, TimeUs_Get, NULL, NULL, 0);
+    motor[0] = Motor_Init(&motor_enc[0], 3960, 0.267, TimeUs_Get, NULL, NULL, 1);
+    motor[1] = Motor_Init(&motor_enc[1], 3960, 0.267, TimeUs_Get, NULL, NULL, 0);
+    motor[2] = Motor_Init(&motor_enc[2], 3960, 0.267, TimeUs_Get, NULL, NULL, 1);
+    motor[3] = Motor_Init(&motor_enc[3], 3960, 0.267, TimeUs_Get, NULL, NULL, 0);
 
     WheelPID_Init(motor, motor_ic);
     Wheel_Stop();

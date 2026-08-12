@@ -69,7 +69,7 @@ void WheelPID_Init(
         wheel_target[i] = 0.0f;
         PID_Create(&wheel_pid[i], 0.1f, 0.05f, 0.0f);
         if (wheel_pid[i] != NULL) {
-            PID_SetOutputMax(wheel_pid[i], 1.0f);
+            PID_SetOutputMax(wheel_pid[i], 0.2f);
         }
     }
 }
