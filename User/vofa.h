@@ -18,4 +18,6 @@ HAL_StatusTypeDef VOFA_JustFloat_UART_Send(UART_HandleTypeDef *huart,
                                            const float *data,
                                            uint8_t channel_num);
 
+float VOFA_BytesToFloatLE(const uint8_t *data);
+
 #endif /* VOFA_H */

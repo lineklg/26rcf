@@ -9,13 +9,13 @@
 
 /** @brief 电机输出回调。 */
 typedef void (*SetSpeedCallback)(void *device, float speed);
-/** @brief 返回微秒时间戳的回调。 */
-typedef uint64_t (*GetTimeCallback)(void);
+/** @brief 返回ms时间戳的回调。 */
+typedef uint32_t (*GetTimeCallback)(void);
 
 /** @brief 带编码器反馈的电机运动学对象。 */
 typedef struct {
     Encoder *enc;                    /**< 编码器。 */
-    uint64_t old_time;               /**< 上次计算时间。 */
+    uint32_t old_time;               /**< 上次计算时间。 */
     uint16_t k;                      /**< 每圈编码器计数。 */
     float l;                         /**< 车轮周长。 */
     float speed_history[3];          /**< 最近三次速度。 */

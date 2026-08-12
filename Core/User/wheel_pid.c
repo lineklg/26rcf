@@ -36,11 +36,11 @@ static float WheelPID_FeedForward(float target_speed)
     float result = 0;
     if (target_speed > 0)
     {
-        result = 0.5f + 0.8125f * target_speed;
+        result = 0.51f + 0.805f * target_speed;
     }
     if (target_speed < 0)
     {
-        result = -0.5f + 0.805f * target_speed;
+        result = -0.51f + 0.805f * target_speed;
     }
     return result;
 }
@@ -67,9 +67,10 @@ void WheelPID_Init(
     for (i = 0U; i < WHEEL_PID_COUNT; i++) {
         wheel_pid[i] = NULL;
         wheel_target[i] = 0.0f;
-        PID_Create(&wheel_pid[i], 0.3f, 0.1f, 0.0f);
+        PID_Create(&wheel_pid[i], 0.2f, 0.1f, 0.0f);
         if (wheel_pid[i] != NULL) {
-            PID_SetOutputMax(wheel_pid[i], 0.2f);
+            PID_SetOutputMax(wheel_pid[i], 0.4f);
+            PID_SetIntegralMax(wheel_pid[i], 3);
         }
     }
 }
@@ -85,10 +86,10 @@ void WheelPID_Forward(float speed)
 
     for (i = 0U; i < WHEEL_PID_COUNT; i++) {
         wheel_target[i] = speed;
-        if (i == 0 || i == 2)
-        {
-            wheel_target[i] *= 0.985;
-        }
+        // if (i == 0 || i == 2)
+        // {
+        //     wheel_target[i] *= 0.985;
+        // }
     }
     WheelPID_Start();
 }
@@ -100,10 +101,10 @@ void WheelPID_Forward(float speed)
  */
 void WheelPID_Turn(float speed)
 {
-    wheel_target[0] = -speed;
-    wheel_target[1] = speed;
-    wheel_target[2] = -speed;
-    wheel_target[3] = speed;
+    wheel_target[0] = speed;
+    wheel_target[1] = -speed;
+    wheel_target[2] = speed;
+    wheel_target[3] = -speed;
     WheelPID_Start();
 }
 
@@ -174,6 +175,7 @@ void WheelPID_Stop(void)
         wheel_target[i] = 0.0f;
         if (wheel_pid[i] != NULL) {
             PID_ResetHistory(wheel_pid[i]);
+            DRV8870_SetDutyPercent(&wheel_driver[i], 0);
         }
     }
 }
@@ -206,6 +208,7 @@ void PID_Task(void)
         output = PID_Calc(wheel_pid[i], wheel_target[i], feedback);
         vofa_data[channel + 1U] = feedback;
         vofa_data[channel + 2U] = output;
+        // DRV8870_SetDutyPercent(&wheel_driver[i], output + WheelPID_FeedForward(wheel_target[i]));
         DRV8870_SetDutyPercent(&wheel_driver[i], output + WheelPID_FeedForward(wheel_target[i]));
     }
 

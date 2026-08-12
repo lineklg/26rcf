@@ -4,7 +4,7 @@
 #include "user.h"
 #include <stdint.h>
 
-extern DRV8870_Motor motor_ic[4];  // 0-3:A-D
+extern DRV8870_Motor motor_ic[4];  // 0-3:D-A
 extern Encoder motor_enc[4];
 extern Motor motor[4];
 extern ServoPosition arm_servo[3]; // 0-2:yaw first second

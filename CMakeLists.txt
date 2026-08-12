@@ -55,6 +55,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Core/User/user.c
     ${CMAKE_SOURCE_DIR}/Core/User/behavior.c
     ${CMAKE_SOURCE_DIR}/Core/User/wheel_pid.c
+    ${CMAKE_SOURCE_DIR}/Core/User/user_task.c
 )
 
 # Add include paths

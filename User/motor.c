@@ -53,13 +53,13 @@ float Motor_CalcSpeed(Motor *motor)
     previous_speed = motor->speed_history[0];
     distance = (float)delta / (float)motor->k * motor->l *
                (motor->reverse ? -1.0f : 1.0f);
-    speed = distance * 1000000.0f / (float)delta_time;
+    speed = distance * 1000.0f / (float)delta_time;
 
     motor->speed_history[2] = motor->speed_history[1];
     motor->speed_history[1] = previous_speed;
     motor->speed_history[0] = speed;
     motor->route += distance;
-    motor->acceleration = (speed - previous_speed) * 1000000.0f /
+    motor->acceleration = (speed - previous_speed) * 1000.0f /
                           (float)delta_time;
     return speed;
 }

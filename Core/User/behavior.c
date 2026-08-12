@@ -1,6 +1,7 @@
 #include "behavior.h"
 #include "DRV8870.h"
 #include "SYN6288.h"
+#include "stm32h7xx_hal.h"
 #include "stm32h7xx_hal_tim.h"
 
 DRV8870_Motor motor_ic[4];
@@ -20,10 +21,10 @@ void Wheel_Init(void)
     Encoder_Create_UsePin(&motor_enc[1], (GPIO_Pin){BM_C_EA_GPIO_Port, BM_C_EA_Pin}, (GPIO_Pin){BM_C_EB_GPIO_Port, BM_C_EB_Pin});
     Encoder_Create_UsePin(&motor_enc[0], (GPIO_Pin){BM_D_EA_GPIO_Port, BM_D_EA_Pin}, (GPIO_Pin){BM_D_EB_GPIO_Port, BM_D_EB_Pin});
     
-    motor[0] = Motor_Init(&motor_enc[0], 3960, 0.267, TimeUs_Get, NULL, NULL, 1);
-    motor[1] = Motor_Init(&motor_enc[1], 3960, 0.267, TimeUs_Get, NULL, NULL, 0);
-    motor[2] = Motor_Init(&motor_enc[2], 3960, 0.267, TimeUs_Get, NULL, NULL, 1);
-    motor[3] = Motor_Init(&motor_enc[3], 3960, 0.267, TimeUs_Get, NULL, NULL, 0);
+    motor[0] = Motor_Init(&motor_enc[0], 3960, 0.267, HAL_GetTick, NULL, NULL, 1);
+    motor[1] = Motor_Init(&motor_enc[1], 3960, 0.267, HAL_GetTick, NULL, NULL, 0);
+    motor[2] = Motor_Init(&motor_enc[2], 3960, 0.267, HAL_GetTick, NULL, NULL, 1);
+    motor[3] = Motor_Init(&motor_enc[3], 3960, 0.267, HAL_GetTick, NULL, NULL, 0);
 
     WheelPID_Init(motor, motor_ic);
     Wheel_Stop();
