@@ -132,11 +132,11 @@ void DRV8870_SetDuty(DRV8870_Motor *motor, int32_t duty)
     }
 
     if (duty > 0) {
-        DRV8870_SetChannelDuty(motor, motor->in2Channel, 0U);
-        DRV8870_SetChannelDuty(motor, motor->in1Channel, (uint32_t)duty);
+        DRV8870_SetChannelDuty(motor, motor->in1Channel, motor->pwmPeriod);
+        DRV8870_SetChannelDuty(motor, motor->in2Channel, motor->pwmPeriod - (uint32_t)duty);
     } else if (duty < 0) {
-        DRV8870_SetChannelDuty(motor, motor->in1Channel, 0U);
-        DRV8870_SetChannelDuty(motor, motor->in2Channel, (uint32_t)(-duty));
+        DRV8870_SetChannelDuty(motor, motor->in2Channel, motor->pwmPeriod);
+        DRV8870_SetChannelDuty(motor, motor->in1Channel, motor->pwmPeriod - (uint32_t)(-duty));
     } else {
         DRV8870_Coast(motor);
     }
