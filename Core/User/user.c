@@ -1,5 +1,7 @@
 #include "user.h"
+#include "area_b_logic.h"
 #include "behavior.h"
+#include "state_machine.h"
 #include "stm32h7xx_hal_uart.h"
 #include "task.h"
 #include <stdio.h>
@@ -35,8 +37,39 @@ uint8_t screen_uart_rx_buffer[40];
 
 /* Debug */
 uint8_t debug_uart_rx_buffer[40];
-uint8_t enable_radar_control;
+// uint8_t enable_radar_control;
+uint8_t get_radar_data;
 float stop_turn_radar_angle;
+
+/**
+ * @brief 执行串口急停并永久停机。
+ *
+ * 停止轮胎、轮速 PID、喷水和用户任务，退出所有状态机后关闭全局中断，
+ * 使程序停留在死循环中，不再响应后续控制命令。
+ * @return 无返回值。
+ */
+static void User_EmergencyStop(void)
+{
+    Wheel_Stop();
+    Pump_Stop();
+    pump_spray_time = 0U;
+
+    Task_Sleep(task_pump_spray);
+    Task_Sleep(task_pump_stop);
+    Task_Sleep(task_change_state_delay);
+    Task_Sleep(task_wheel_stop_delay);
+    Task_Sleep(task_wheel_stop_condition1);
+
+    StateMachine_Change(&main_state_machine, STATE_MACHINE_NO_STATE);
+    StateMachine_Change(&area_A_state_machine, STATE_MACHINE_NO_STATE);
+    StateMachine_Change(&area_B_state_machine, STATE_MACHINE_NO_STATE);
+
+    __disable_irq();
+    while (1)
+    {
+        __BKPT();
+    }
+}
 
 void User_Init(void)
 {
@@ -52,7 +85,11 @@ void User_Init(void)
 
     HAL_UARTEx_ReceiveToIdle_IT(&huart1, debug_uart_rx_buffer, 40);
     HAL_UARTEx_ReceiveToIdle_IT(&huart3, screen_uart_rx_buffer, 40);
-    enable_radar_control = 0;
+
+    // enable_radar_control = 0;
+    get_radar_data = 0;
+
+    // SYN_FrameInfo(&huart2, 0, "123");
 }
 
 void User_Update(void)
@@ -105,12 +142,12 @@ void Area_A_State_Change(uint16_t state_id, uint8_t enter_or_exit)
         switch (state_id)
         {
         case 0:
-            // TODO 移动到目标位置的任务
-            // State_Change_WithDelay(&area_A_state_machine, 2, 2000);
+            Wheel_Forward_WithTime(0.3, 2000);
+            State_Change_WithDelay(&area_A_state_machine, 2, 2200);
             break;
         case 1:
-            // TODO 移动到目标位置的任务
-            // State_Change_WithDelay(&area_A_state_machine, 2, 2000);
+            Wheel_Forward_WithTime(0.3, 2000);
+            State_Change_WithDelay(&area_A_state_machine, 2, 2200);
             break;
         case 2:
             Arm_RoughAdjustment(1);
@@ -130,11 +167,11 @@ void Area_A_State_Change(uint16_t state_id, uint8_t enter_or_exit)
             Task_Awake(task_pump_spray);
             if (area_A_current_position % 2 == 0)
             {
-                State_Change_WithDelay(&area_A_state_machine, 3, 1000 + area_A_situation[area_A_current_position] * 600);
+                State_Change_WithDelay(&area_A_state_machine, 3, 900 + area_A_situation[area_A_current_position] * 650);
             }
             else
             {
-                State_Change_WithDelay(&area_A_state_machine, 6, 1000 + area_A_situation[area_A_current_position] * 600);
+                State_Change_WithDelay(&area_A_state_machine, 6, 900 + area_A_situation[area_A_current_position] * 650);
             }
             area_A_current_position++;
             break;
@@ -150,10 +187,28 @@ void Area_A_State_Change(uint16_t state_id, uint8_t enter_or_exit)
             }
             break;
         case 7:
+            Wheel_Forward_WithTime(0.3, 2000);
+            State_Change_WithDelay(&main_state_machine, 2, 2200);
             break;
         default:
             break;
         }
+    }
+}
+
+static void Area_B_Advance_Position(const AreaBPositionDecision *decision,
+                                    uint32_t delay)
+{
+    area_B_current_position = decision->next_position;
+    if (delay == 0U)
+    {
+        StateMachine_Change(&area_B_state_machine, decision->next_state);
+    }
+    else
+    {
+        State_Change_WithDelay(&area_B_state_machine,
+                               decision->next_state,
+                               delay);
     }
 }
 
@@ -172,31 +227,38 @@ void Area_B_State_Change(uint16_t state_id, uint8_t enter_or_exit)
             // State_Change_WithDelay(&area_B_state_machine, 2, 2000);
             break;
         case 2:
-            Arm_RoughAdjustment(1);
-            State_Change_WithDelay(&area_B_state_machine, 4, 1000);
-            break;
         case 3:
-            Arm_RoughAdjustment(2);
+        {
+            AreaBPositionDecision decision = AreaB_DecidePosition(
+                area_B_current_position,
+                area_B_situation[area_B_current_position]
+            );
+            if (!decision.should_irrigate)
+            {
+                Area_B_Advance_Position(&decision, 0U);
+                break;
+            }
+            Arm_RoughAdjustment(state_id == 2U ? 1U : 2U);
             State_Change_WithDelay(&area_B_state_machine, 4, 1000);
             break;
+        }
         case 4:
             Voice_BroadCast(area_B_situation[area_B_current_position]);
             State_Change_WithDelay(&area_B_state_machine, 5, 1000);
             break;
         case 5:
-            pump_spray_time = area_B_situation[area_B_current_position];
+        {
+            uint8_t situation = area_B_situation[area_B_current_position];
+            AreaBPositionDecision decision = AreaB_DecidePosition(
+                area_B_current_position,
+                situation
+            );
+            pump_spray_time = situation;
             Task_SetRunTick_Current(task_pump_spray);
             Task_Awake(task_pump_spray);
-            if (area_B_current_position % 2 == 0)
-            {
-                State_Change_WithDelay(&area_B_state_machine, 3, 1000 + area_B_situation[area_B_current_position] * 600);
-            }
-            else
-            {
-                State_Change_WithDelay(&area_B_state_machine, 6, 1000 + area_B_situation[area_B_current_position] * 600);
-            }
-            area_B_current_position++;
+            Area_B_Advance_Position(&decision, 1000U + situation * 600U);
             break;
+        }
         case 6:
             Arm_RoughAdjustment(0);
             if (area_B_current_position < 6)
@@ -217,75 +279,17 @@ void Area_B_State_Change(uint16_t state_id, uint8_t enter_or_exit)
     
 }
 
-static uint8_t Task_Wheel_Stop_Condition()
-{
-    if (fabsf(stop_turn_radar_angle - radar_get_angle) * 8.0f < M_PI)
-    {
-        return 1;
-    }
-    else
-    {
-        return 0;
-    }
-}
-
-static void Debug_UARTRx_Operation(void)
-{
-    switch (debug_uart_rx_buffer[0])
-    {
-    case 0x10:                              // 轮子直行 后面数据为速度
-        float forward_speed = VOFA_BytesToFloatLE(&debug_uart_rx_buffer[1]);
-        Wheel_Forward(forward_speed);
-        break;
-    case 0x11:                              // 轮子转弯 后面数据为速度
-        float turn_speed = VOFA_BytesToFloatLE(&debug_uart_rx_buffer[1]);
-        Wheel_Turn(turn_speed);
-        break;
-    case 0x12:                              // 停车
-        Wheel_Stop();
-        break;
-    case 0x13:                              // 轮子转弯开环 后面数据依次为速度和时间
-        Wheel_Turn(((float)debug_uart_rx_buffer[1] / 256.0 - 0.5) * 0.8);
-        Task_SetRunTick_Delay(task_wheel_stop_delay, ((uint16_t)debug_uart_rx_buffer[2] << 8) + ((uint16_t)debug_uart_rx_buffer[3])); 
-        Task_Awake(task_wheel_stop_delay);
-        break;
-    case 0x14:                              // 轮子转弯 基于激光雷达给出的角度 后面数据为速度 目前只能达到最终右转90°的效果
-        Wheel_Turn(((float)debug_uart_rx_buffer[1] / 256.0 - 0.5) * 0.8);
-        stop_turn_radar_angle = radar_get_angle - M_PI_2 + 0.065;
-        if (stop_turn_radar_angle < - M_PI)
-        {
-            stop_turn_radar_angle += 2 * M_PI;
-        }
-        Task_SetExtraData(task_wheel_stop_condition1, (Task_ExtraData){.condition = Task_Wheel_Stop_Condition});
-        Task_Awake(task_wheel_stop_condition1);
-        break;
-    case 0x20:
-        Pump_Start();
-        break;
-    case 0x21:
-        Pump_Stop();
-        break;
-    case 0x22:
-        pump_spray_time = debug_uart_rx_buffer[1] < 3 ? debug_uart_rx_buffer[1] : 3;
-        Task_SetRunTick_Current(task_pump_spray);
-        Task_Awake(task_pump_spray);
-        break;
-    case 0x50:
-        if (debug_uart_rx_buffer[1] <= 3 && debug_uart_rx_buffer[1])
-        {
-            Voice_BroadCast(debug_uart_rx_buffer[1]);
-        }
-        break;
-    case 0xA0:
-        enable_radar_control = 0;  
-        break;        
-    case 0xA1:
-        enable_radar_control = 1;   
-        break;          
-    default:
-        break;
-    }
-}
+// static uint8_t Task_Wheel_Stop_Condition()
+// {
+//     if (fabsf(stop_turn_radar_angle - radar_get_angle) * 8.0f < M_PI)
+//     {
+//         return 1;
+//     }
+//     else
+//     {
+//         return 0;
+//     }
+// }
 
 static void Screen_UARTRx_Operation(void)
 {
@@ -312,11 +316,108 @@ static void Screen_UARTRx_Operation(void)
         }
         for (uint16_t i = 0; i < 4; i++)
         {
-            area_B_situation[area_B_sequence[i]] = screen_uart_rx_buffer[6 + i] - '0';
+            area_B_situation[area_B_sequence[i] - 1] = screen_uart_rx_buffer[6 + i] - '0';
         }
         break;
     case 's':
+        StateMachine_Change(&main_state_machine, 1);
         break;
+    default:
+        break;
+    }
+}
+
+static void Debug_UARTRx_Operation(void)
+{
+    switch (debug_uart_rx_buffer[0])
+    {
+    /* 轮子 */
+    case 0x10:                              // 直行 后面数据为速度
+        float forward_speed = VOFA_BytesToFloatLE(&debug_uart_rx_buffer[1]);
+        Wheel_Forward(forward_speed);
+        break;
+    case 0x11:                              // 转弯 后面数据为速度
+        float turn_speed = VOFA_BytesToFloatLE(&debug_uart_rx_buffer[1]);
+        Wheel_Turn(turn_speed);
+        break;
+    case 0x12:                              // 停车
+        Wheel_Stop();
+        break;
+    case 0x13:                              // 转弯开环 后面数据依次为速度和时间
+        Wheel_Turn(((float)debug_uart_rx_buffer[1] / 256.0 - 0.5) * 0.8);
+        Wheel_Stop_WithDelay(((uint16_t)debug_uart_rx_buffer[2] << 8) + ((uint16_t)debug_uart_rx_buffer[3])); 
+        break;
+    case 0x14:                              // 转弯 基于激光雷达给出的角度 后面数据为速度 目前只能达到最终右转90°的效果
+        // Wheel_Turn(((float)debug_uart_rx_buffer[1] / 256.0 - 0.5) * 0.8);
+        // stop_turn_radar_angle = radar_get_angle - M_PI_2 + 0.065;
+        // if (stop_turn_radar_angle < - M_PI)
+        // {
+        //     stop_turn_radar_angle += 2 * M_PI;
+        // }
+        // Task_SetExtraData(task_wheel_stop_condition1, (Task_ExtraData){.condition = Task_Wheel_Stop_Condition});
+        // Task_Awake(task_wheel_stop_condition1);
+        break;
+    case 0x16:                              // 基于激光雷达给出的距离移动 后面数据依次为 速度(/ 256.0 * 0.4) 距离(/64.0)
+        Wheel_Forward_WithRadar_AxisX((float)debug_uart_rx_buffer[1] / 256.0 * 0.4, debug_uart_rx_buffer[2] / 64.0);
+        break;
+    /* 水泵 */
+    case 0x20:                              // 开启
+        Pump_Start();
+        break;
+    case 0x21:                              // 关闭
+        Pump_Stop();
+        break;
+    case 0x22:                              // 根据次数喷水 最多3次
+        pump_spray_time = debug_uart_rx_buffer[1] < 3 ? debug_uart_rx_buffer[1] : 3;
+        Task_SetRunTick_Current(task_pump_spray);
+        Task_Awake(task_pump_spray);
+        break;
+    /* 语音播报 */
+    case 0x50:
+        if (debug_uart_rx_buffer[1] <= 3 && debug_uart_rx_buffer[1])
+        {
+            Voice_BroadCast(debug_uart_rx_buffer[1]);
+        }
+        break;
+    /* 机械臂 */
+    case 0x60:
+        Arm_RoughAdjustment(0);
+        break;
+    case 0x61:
+        Arm_RoughAdjustment(1);
+        break;
+    case 0x62:
+        Arm_RoughAdjustment(2);
+        break;   
+    case 0x65:                              // 后面数据第一位为控制的舵机，第二位为位置（0-FF,80为中位）
+        if (debug_uart_rx_buffer[1] < 3)
+        {
+            ServoPosition_SetPosition(&arm_servo[debug_uart_rx_buffer[1]], ((float)debug_uart_rx_buffer[2] / 256.0 - 0.5) * 2.0);
+        }
+        break;
+    /* 屏幕模拟 */ 
+    case 0x80:
+        sprintf((char *)screen_uart_rx_buffer, "#a123123");
+        Screen_UARTRx_Operation();
+        break;
+    case 0x81:
+        // sprintf(screen_uart_rx_buffer, "#b12463212");
+        // Screen_UARTRx_Operation();
+        break;
+    case 0x82:
+        sprintf((char *)screen_uart_rx_buffer, "#s");
+        Screen_UARTRx_Operation();
+    /* Deperated 树莓派控制 */
+    // case 0xA0:
+    //     enable_radar_control = 0;  
+    //     break;        
+    // case 0xA1:
+    //     enable_radar_control = 1;   
+    //     break;   
+    /* 串口控制急停 */
+    case 0xF0:
+        User_EmergencyStop();
+        break;       
     default:
         break;
     }
@@ -347,6 +448,10 @@ void USB_Receive(void)
     // {
     //     return;
     // }
+    if (!get_radar_data)
+    {
+        get_radar_data = 1;
+    }
     sscanf((char *)usb_rx_buffer, "X:%f,Y:%f,A:%f", &radar_get_axis[0], &radar_get_axis[1], &radar_get_angle);
     // WheelPID_SetSpeeds(
     //     (radar_linear_speed - radar_angle_error * 1),

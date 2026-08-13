@@ -14,6 +14,11 @@ uint16_t next_state_id_delay;
 
 static void Pump_Spray_Task()
 {
+    if (pump_spray_time == 0 || pump_spray_time > 3)
+    {
+        pump_spray_time = 0;
+        return;
+    }
     Pump_Start();
     Task_SetRunTick_Delay(task_pump_stop, 150);
     Task_Awake(task_pump_stop);
@@ -37,7 +42,8 @@ static void Change_State_Delay_Task()
 
 static void Wheel_Stop_Task()
 {
-    Wheel_Forward(0);
+    // Wheel_Forward(0);
+    Wheel_Stop();
 }
 
 void User_Task_Init(void)

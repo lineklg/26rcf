@@ -7,10 +7,15 @@
 #include <stddef.h>
 
 static PID *wheel_pid[WHEEL_PID_COUNT];
+static PID *radar_error_pid;
+
 static Motor *wheel_motor;
 static DRV8870_Motor *wheel_driver;
 static float wheel_target[WHEEL_PID_COUNT];
 static uint8_t wheel_pid_running;
+
+static uint8_t radar_error_pid_enable;
+static float radar_target_angle;
 
 /**
  * @brief 在停止状态下重置历史并启动四轮速度环。
@@ -210,7 +215,9 @@ void PID_Task(void)
         vofa_data[channel + 1U] = feedback;
         vofa_data[channel + 2U] = output;
         // DRV8870_SetDutyPercent(&wheel_driver[i], output + WheelPID_FeedForward(wheel_target[i]));
-        DRV8870_SetDutyPercent(&wheel_driver[i], output + WheelPID_FeedForward(wheel_target[i]));
+        float result = output;
+        result += WheelPID_FeedForward(wheel_target[i]);
+        DRV8870_SetDutyPercent(&wheel_driver[i], result);
     }
 
     VOFA_JustFloat_UART_Send(

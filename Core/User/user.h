@@ -22,6 +22,8 @@
 #include "user_task.h"
 
 extern uint8_t usb_rx_buffer[256];
+extern volatile float radar_get_axis[2];
+extern volatile float radar_get_angle;              // 弧度制
 
 void User_Init(void);
 void User_Update(void);
