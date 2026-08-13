@@ -11,6 +11,9 @@
 /** @brief 速度环执行周期，单位为毫秒。 */
 #define WHEEL_PID_PERIOD_MS 20U
 
+/** @brief 角度保持使能，只有值为 1 时计算角度 PID。 */
+extern uint8_t enable_fix_angle;
+
 /**
  * @brief 初始化四轮速度 PID 控制器。
  * @param[in,out] motors 四个车轮电机对象。
@@ -74,5 +77,12 @@ void WheelPID_Stop(void);
  * @return 无。
  */
 void WheelPID_SetK(uint8_t index, float kp, float ki, float kd);
+
+/**
+ * @brief 设置角度保持目标值。
+ * @param[in] target_angle 目标角度，单位为弧度，将归一化到 [-pi, pi]。
+ * @return 无。
+ */
+void WheelPID_SetTargetAngle(float target_angle);
 
 #endif /* WHEEL_PID_H */

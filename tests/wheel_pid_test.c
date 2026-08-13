@@ -1,4 +1,5 @@
 #include "wheel_pid.h"
+#include "pid.h"
 #include "task.h"
 #include "usart.h"
 #include "vofa.h"
@@ -15,8 +16,23 @@ static float duty_output[WHEEL_PID_COUNT];
 static uint32_t duty_write_count[WHEEL_PID_COUNT];
 static float sent_target[WHEEL_PID_COUNT];
 static uint32_t send_count;
+static uint32_t angle_reset_count;
 
 UART_HandleTypeDef huart1;
+volatile float radar_get_angle;
+
+void __real_PID_ResetHistory(PID *pid);
+
+/**
+ * @brief 记录 PID 历史清除调用并转发到真实实现。
+ * @param[in,out] pid 待清除历史的 PID 对象。
+ * @return 无。
+ */
+void __wrap_PID_ResetHistory(PID *pid)
+{
+    angle_reset_count++;
+    __real_PID_ResetHistory(pid);
+}
 
 /**
  * @brief 返回主机测试使用的毫秒时间戳。
@@ -100,6 +116,9 @@ static void Reset_Fixture(void)
 
     fake_tick = 0U;
     send_count = 0U;
+    angle_reset_count = 0U;
+    radar_get_angle = 0.0f;
+    enable_fix_angle = 0U;
     for (i = 0U; i < WHEEL_PID_COUNT; i++) {
         test_motors[i] = (Motor){0};
         test_drivers[i] = (DRV8870_Motor){0};
@@ -109,6 +128,22 @@ static void Reset_Fixture(void)
     }
     Task_Init(Fake_GetTick);
     WheelPID_Init(test_motors, test_drivers);
+}
+
+/**
+ * @brief 断言最近一次四轮占空比输出。
+ * @param[in] a A 轮期望占空比。
+ * @param[in] b B 轮期望占空比。
+ * @param[in] c C 轮期望占空比。
+ * @param[in] d D 轮期望占空比。
+ * @return 无。
+ */
+static void Assert_Duties(float a, float b, float c, float d)
+{
+    Assert_Close(duty_output[0], a);
+    Assert_Close(duty_output[1], b);
+    Assert_Close(duty_output[2], c);
+    Assert_Close(duty_output[3], d);
 }
 
 /**
@@ -215,11 +250,11 @@ static void Test_Running_Update_Keeps_PID_History(void)
     WheelPID_SetK(0U, 0.0f, 1.0f, 0.0f);
     WheelPID_SetSpeeds(0.1f, 0.0f, 0.0f, 0.0f);
     Run_Current_Tick();
-    Assert_Close(duty_output[0], 0.58325f);
+    Assert_Close(duty_output[0], 0.242f);
 
     WheelPID_SetSpeed(0U, 0.2f);
     Run_Next_Period();
-    Assert_Close(duty_output[0], 0.6685f);
+    Assert_Close(duty_output[0], 0.446f);
     Assert_Targets(0.2f, 0.0f, 0.0f, 0.0f);
 }
 
@@ -235,11 +270,11 @@ static void Test_Existing_Commands_Do_Not_Regress(void)
     Reset_Fixture();
     WheelPID_Forward(0.5f);
     Run_Current_Tick();
-    Assert_Targets(0.4925f, 0.5f, 0.4925f, 0.5f);
+    Assert_Targets(0.5f, 0.5f, 0.5f, 0.5f);
 
     WheelPID_Turn(0.4f);
     Run_Next_Period();
-    Assert_Targets(-0.4f, 0.4f, -0.4f, 0.4f);
+    Assert_Targets(0.4f, -0.4f, 0.4f, -0.4f);
 
     WheelPID_Stop();
     for (i = 0U; i < WHEEL_PID_COUNT; i++) {
@@ -249,6 +284,99 @@ static void Test_Existing_Commands_Do_Not_Regress(void)
     for (i = 0U; i < WHEEL_PID_COUNT; i++) {
         assert(duty_write_count[i] == writes_after_stop[i]);
     }
+}
+
+/**
+ * @brief 验证禁用角度保持时不向四轮结果叠加修正。
+ * @return 无。
+ */
+static void Test_Angle_PID_Disabled_Does_Not_Change_Output(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetAngle(0.5f);
+    radar_get_angle = 0.0f;
+    enable_fix_angle = 0U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+/**
+ * @brief 验证角度修正按 A/C 与 B/D 相反方向叠加。
+ * @return 无。
+ */
+static void Test_Angle_PID_Applies_Opposite_Wheel_Corrections(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetAngle(0.1f);
+    radar_get_angle = 0.0f;
+    enable_fix_angle = 1U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(0.02f, -0.02f, 0.02f, -0.02f);
+
+    WheelPID_SetTargetAngle(-0.1f);
+    Run_Next_Period();
+    Assert_Duties(-0.02f, 0.02f, -0.02f, 0.02f);
+}
+
+/**
+ * @brief 验证角度 PID 修正被限制在正负 0.05。
+ * @return 无。
+ */
+static void Test_Angle_PID_Limits_Output(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetAngle(1.0f);
+    radar_get_angle = 0.0f;
+    enable_fix_angle = 1U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(0.05f, -0.05f, 0.05f, -0.05f);
+}
+
+/**
+ * @brief 验证跨越正负 pi 边界时使用最短角误差。
+ * @return 无。
+ */
+static void Test_Angle_PID_Uses_Shortest_Angle_Error(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetAngle(3.13f);
+    radar_get_angle = -3.13f;
+    enable_fix_angle = 1U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(-0.00463706f, 0.00463706f, -0.00463706f, 0.00463706f);
+}
+
+/**
+ * @brief 验证使能原始值每次变化都清除一次角度 PID 历史。
+ * @return 无。
+ */
+static void Test_Angle_PID_Enable_Changes_Reset_History(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetAngle(0.1f);
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    angle_reset_count = 0U;
+
+    enable_fix_angle = 1U;
+    Run_Next_Period();
+    assert(angle_reset_count == 1U);
+
+    enable_fix_angle = 0U;
+    Run_Next_Period();
+    assert(angle_reset_count == 2U);
+
+    enable_fix_angle = 2U;
+    Run_Next_Period();
+    assert(angle_reset_count == 3U);
+    Assert_Duties(0.0f, 0.0f, 0.0f, 0.0f);
+
+    Run_Next_Period();
+    assert(angle_reset_count == 3U);
 }
 
 /**
@@ -263,5 +391,10 @@ int main(void)
     Test_Invalid_Index_Does_Not_Start_Or_Modify();
     Test_Running_Update_Keeps_PID_History();
     Test_Existing_Commands_Do_Not_Regress();
+    Test_Angle_PID_Disabled_Does_Not_Change_Output();
+    Test_Angle_PID_Applies_Opposite_Wheel_Corrections();
+    Test_Angle_PID_Limits_Output();
+    Test_Angle_PID_Uses_Shortest_Angle_Error();
+    Test_Angle_PID_Enable_Changes_Reset_History();
     return 0;
 }

@@ -6,6 +6,8 @@
 
 #include <stddef.h>
 
+extern volatile float radar_get_angle;
+
 static PID *wheel_pid[WHEEL_PID_COUNT];
 static PID *radar_error_pid;
 
@@ -14,8 +16,28 @@ static DRV8870_Motor *wheel_driver;
 static float wheel_target[WHEEL_PID_COUNT];
 static uint8_t wheel_pid_running;
 
-static uint8_t radar_error_pid_enable;
 static float radar_target_angle;
+uint8_t enable_fix_angle;
+static uint8_t enable_fix_angle_previous;
+
+/**
+ * @brief 将角度归一化到 [-pi, pi]。
+ * @param[in] angle 待归一化的角度，单位为弧度。
+ * @return 归一化后的角度。
+ */
+static float WheelPID_NormalizeAngle(float angle)
+{
+    const float pi = 3.14159265358979323846f;
+    const float two_pi = 2.0f * pi;
+
+    while (angle > pi) {
+        angle -= two_pi;
+    }
+    while (angle < -pi) {
+        angle += two_pi;
+    }
+    return angle;
+}
 
 /**
  * @brief 在停止状态下重置历史并启动四轮速度环。
@@ -67,6 +89,9 @@ void WheelPID_Init(
     wheel_motor = motors;
     wheel_driver = drivers;
     wheel_pid_running = 0U;
+    radar_target_angle = 0.0f;
+    enable_fix_angle = 0U;
+    enable_fix_angle_previous = 0U;
 
     PID_Init();
     PID_SetPeriodMs(WHEEL_PID_PERIOD_MS);
@@ -78,6 +103,11 @@ void WheelPID_Init(
             PID_SetOutputMax(wheel_pid[i], 1.0f);
             PID_SetIntegralMax(wheel_pid[i], (wheel_pid[i]->output_max / wheel_pid[i]->ki));
         }
+    }
+    radar_error_pid = NULL;
+    PID_Create(&radar_error_pid, 0.2f, 0.0f, 0.0f);
+    if (radar_error_pid != NULL) {
+        PID_SetOutputMax(radar_error_pid, 0.05f);
     }
 }
 
@@ -168,6 +198,16 @@ void WheelPID_SetK(uint8_t index, float kp, float ki, float kd)
 }
 
 /**
+ * @brief 设置角度保持目标值。
+ * @param[in] target_angle 目标角度，单位为弧度。
+ * @return 无。
+ */
+void WheelPID_SetTargetAngle(float target_angle)
+{
+    radar_target_angle = WheelPID_NormalizeAngle(target_angle);
+}
+
+/**
  * @brief 停止四轮速度环并清除目标与 PID 历史。
  * @return 无。
  */
@@ -193,12 +233,27 @@ void WheelPID_Stop(void)
 void PID_Task(void)
 {
     uint8_t i;
+    float angle_output = 0.0f;
     float vofa_data[WHEEL_PID_COUNT * 3U] = {0.0f};
 
     if ((wheel_pid_running == 0U) ||
         (wheel_motor == NULL) ||
         (wheel_driver == NULL)) {
         return;
+    }
+
+    if (enable_fix_angle != enable_fix_angle_previous) {
+        if (radar_error_pid != NULL) {
+            PID_ResetHistory(radar_error_pid);
+        }
+        enable_fix_angle_previous = enable_fix_angle;
+    }
+
+    if ((enable_fix_angle == 1U) && (radar_error_pid != NULL)) {
+        float angle_error = WheelPID_NormalizeAngle(
+            radar_target_angle - radar_get_angle
+        );
+        angle_output = PID_Calc(radar_error_pid, angle_error, 0.0f);
     }
 
     for (i = 0U; i < WHEEL_PID_COUNT; i++) {
@@ -217,6 +272,11 @@ void PID_Task(void)
         // DRV8870_SetDutyPercent(&wheel_driver[i], output + WheelPID_FeedForward(wheel_target[i]));
         float result = output;
         result += WheelPID_FeedForward(wheel_target[i]);
+        if (enable_fix_angle == 1U) {
+            result += ((i == 0U) || (i == 2U))
+                ? angle_output
+                : -angle_output;
+        }
         DRV8870_SetDutyPercent(&wheel_driver[i], result);
     }
 
