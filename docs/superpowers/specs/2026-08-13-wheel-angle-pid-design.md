@@ -10,7 +10,7 @@
 
 在 `Core/User/wheel_pid.h` 中新增：
 
-- `extern uint8_t enable_fix_angle`：公开角度保持使能变量，非零值统一按启用处理。
+- `extern uint8_t enable_fix_angle`：公开角度保持使能变量，只有值为 `1U` 时启用。
 - `WheelPID_SetTargetAngle(float target_angle)`：设置 `radar_target_angle`，输入单位为
   弧度，并归一化到 `[-pi, pi]`。
 
@@ -21,10 +21,10 @@
 
 ## 控制流程
 
-每次 `PID_Task()` 执行时，先比较当前 `enable_fix_angle` 与上一次状态。只要状态
+每次 `PID_Task()` 执行时，先比较当前 `enable_fix_angle` 与上一次原始值。只要数值
 发生变化，就调用 `PID_ResetHistory()` 清除角度 PID 的积分和上次反馈历史，然后
-记录新状态。这样即使外部直接修改公开变量，下一次控制计算也会在使用新状态前
-完成清理。
+记录新值。这样即使外部直接修改公开变量，下一次控制计算也会在使用新值前完成
+清理。仅当新值恰好为 `1U` 时计算角度 PID，其他值均视为禁用。
 
 当角度保持启用且角度 PID 创建成功时，使用 `radar_target_angle` 与
 `radar_get_angle` 计算最短有符号角误差，并将误差归一化到 `[-pi, pi]`。例如目标
@@ -56,4 +56,3 @@ PID 输出，B、D 轮减角度 PID 输出。负输出会自然反转上述修�
 5. `enable_fix_angle` 在启用和禁用之间切换后，角度 PID 历史在下一次任务计算前
    被清除。
 6. 原有独立轮速、直行、转向和停止测试继续通过。
-
