@@ -1,12 +1,13 @@
 #include "user.h"
 #include "behavior.h"
 #include "stm32h7xx_hal_uart.h"
+#include "task.h"
 #include <stdio.h>
 
 // 0：空闲/设置 1：A区灌溉 2：移动到B区 3：B区灌溉 6:移动到终点区
 StateMachine main_state_machine; 
 
-// 0: 准备 1：移动到下一个灌溉点 2：转向左边 3：转向右边 4：语音播报 5：浇灌 6：回正
+// 0: 准备 1：移动到下一个灌溉点 2：转向左边 3：转向右边 4：语音播报 5：浇灌 6：回正 7：结束
 StateMachine area_A_state_machine;
 StateMachine area_B_state_machine;
 
@@ -24,12 +25,18 @@ uint8_t area_B_current_position;
 
 /* 树莓派传输变量 */
 uint8_t usb_rx_buffer[256];
-float radar_linear_speed;
-float radar_angle_error;
+// float radar_linear_speed;
+// float radar_angle_error;
+volatile float radar_get_axis[2];
+volatile float radar_get_angle;              // 弧度制
+
+/* 屏幕传输变量 */
+uint8_t screen_uart_rx_buffer[40];
 
 /* Debug */
 uint8_t debug_uart_rx_buffer[40];
 uint8_t enable_radar_control;
+float stop_turn_radar_angle;
 
 void User_Init(void)
 {
@@ -37,13 +44,14 @@ void User_Init(void)
     User_Task_Init();
     Wheel_Init();
     StateMachine_Init(&main_state_machine, 0, Main_State_Change);
-    StateMachine_Init(&area_A_state_machine, STATE_MACHINE_NO_STATE, Main_State_Change);
-    StateMachine_Init(&area_B_state_machine, STATE_MACHINE_NO_STATE, Main_State_Change);
+    StateMachine_Init(&area_A_state_machine, STATE_MACHINE_NO_STATE, Area_A_State_Change);
+    StateMachine_Init(&area_B_state_machine, STATE_MACHINE_NO_STATE, Area_B_State_Change);
     
     Arm_Init();
     Arm_RoughAdjustment(0);
 
     HAL_UARTEx_ReceiveToIdle_IT(&huart1, debug_uart_rx_buffer, 40);
+    HAL_UARTEx_ReceiveToIdle_IT(&huart3, screen_uart_rx_buffer, 40);
     enable_radar_control = 0;
 }
 
@@ -92,97 +100,132 @@ void Main_State_Change(uint16_t state_id, uint8_t enter_or_exit)
 
 void Area_A_State_Change(uint16_t state_id, uint8_t enter_or_exit)
 {
-    switch (state_id)
+    if (enter_or_exit == STATE_ENTER)
     {
-    case 0:
-        break;
-    case 1:
-        // TODO 移动到目标位置的任务
-        // State_Change_WithDelay(&area_A_state_machine, 2, 2000);
-        break;
-    case 2:
-        Arm_RoughAdjustment(1);
-        State_Change_WithDelay(&area_A_state_machine, 4, 1000);
-        break;
-    case 3:
-        Arm_RoughAdjustment(2);
-        State_Change_WithDelay(&area_A_state_machine, 4, 1000);
-        break;
-    case 4:
-        Voice_BroadCast(area_A_situation[area_A_current_position]);
-        State_Change_WithDelay(&area_A_state_machine, 5, 1000);
-        break;
-    case 5:
-        pump_spray_time = area_A_situation[area_A_current_position];
-        Task_SetRunTick_Current(task_pump_spray);
-        Task_Awake(task_pump_spray);
-        if (area_A_current_position % 2 == 0)
+        switch (state_id)
         {
-            State_Change_WithDelay(&area_A_state_machine, 3, 1000 + area_A_situation[area_A_current_position] * 600);
+        case 0:
+            // TODO 移动到目标位置的任务
+            // State_Change_WithDelay(&area_A_state_machine, 2, 2000);
+            break;
+        case 1:
+            // TODO 移动到目标位置的任务
+            // State_Change_WithDelay(&area_A_state_machine, 2, 2000);
+            break;
+        case 2:
+            Arm_RoughAdjustment(1);
+            State_Change_WithDelay(&area_A_state_machine, 4, 1000);
+            break;
+        case 3:
+            Arm_RoughAdjustment(2);
+            State_Change_WithDelay(&area_A_state_machine, 4, 1000);
+            break;
+        case 4:
+            Voice_BroadCast(area_A_situation[area_A_current_position]);
+            State_Change_WithDelay(&area_A_state_machine, 5, 1000);
+            break;
+        case 5:
+            pump_spray_time = area_A_situation[area_A_current_position];
+            Task_SetRunTick_Current(task_pump_spray);
+            Task_Awake(task_pump_spray);
+            if (area_A_current_position % 2 == 0)
+            {
+                State_Change_WithDelay(&area_A_state_machine, 3, 1000 + area_A_situation[area_A_current_position] * 600);
+            }
+            else
+            {
+                State_Change_WithDelay(&area_A_state_machine, 6, 1000 + area_A_situation[area_A_current_position] * 600);
+            }
+            area_A_current_position++;
+            break;
+        case 6:
+            Arm_RoughAdjustment(0);
+            if (area_A_current_position < 6)
+            {
+                State_Change_WithDelay(&area_A_state_machine, 1, 500);
+            }
+            else
+            {
+                State_Change_WithDelay(&area_A_state_machine, 7, 500);
+            }
+            break;
+        case 7:
+            break;
+        default:
+            break;
         }
-        else
-        {
-            State_Change_WithDelay(&area_A_state_machine, 6, 1000 + area_A_situation[area_A_current_position] * 600);
-        }
-        area_A_current_position++;
-        break;
-    case 6:
-        Arm_RoughAdjustment(0);
-        if (area_A_current_position < 6)
-        {
-            State_Change_WithDelay(&area_A_state_machine, 1, 500);
-        }
-        break;
-    default:
-        break;
     }
 }
 
 void Area_B_State_Change(uint16_t state_id, uint8_t enter_or_exit)
 {
-    switch (state_id)
+    if (enter_or_exit == STATE_ENTER)
     {
-    case 0:
-        break;
-    case 1:
-        // TODO 移动到目标位置的任务
-        // State_Change_WithDelay(&area_B_state_machine, 2, 2000);
-        break;
-    case 2:
-        Arm_RoughAdjustment(1);
-        State_Change_WithDelay(&area_B_state_machine, 4, 200);
-        break;
-    case 3:
-        Arm_RoughAdjustment(2);
-        State_Change_WithDelay(&area_B_state_machine, 4, 200);
-        break;
-    case 4:
-        Voice_BroadCast(area_B_situation[area_B_current_position]);
-        State_Change_WithDelay(&area_B_state_machine, 5, 1000);
-        break;
-    case 5:
-        pump_spray_time = area_B_situation[area_B_current_position];
-        Task_SetRunTick_Current(task_pump_spray);
-        Task_Awake(task_pump_spray);
-        if (area_B_current_position % 2 == 0)
+        switch (state_id)
         {
-            State_Change_WithDelay(&area_B_state_machine, 3, 1000 + area_B_situation[area_A_current_position] * 600);
+        case 0:
+            // TODO 移动到目标位置的任务
+            // State_Change_WithDelay(&area_B_state_machine, 2, 2000);
+            break;
+        case 1:
+            // TODO 移动到目标位置的任务
+            // State_Change_WithDelay(&area_B_state_machine, 2, 2000);
+            break;
+        case 2:
+            Arm_RoughAdjustment(1);
+            State_Change_WithDelay(&area_B_state_machine, 4, 1000);
+            break;
+        case 3:
+            Arm_RoughAdjustment(2);
+            State_Change_WithDelay(&area_B_state_machine, 4, 1000);
+            break;
+        case 4:
+            Voice_BroadCast(area_B_situation[area_B_current_position]);
+            State_Change_WithDelay(&area_B_state_machine, 5, 1000);
+            break;
+        case 5:
+            pump_spray_time = area_B_situation[area_B_current_position];
+            Task_SetRunTick_Current(task_pump_spray);
+            Task_Awake(task_pump_spray);
+            if (area_B_current_position % 2 == 0)
+            {
+                State_Change_WithDelay(&area_B_state_machine, 3, 1000 + area_B_situation[area_B_current_position] * 600);
+            }
+            else
+            {
+                State_Change_WithDelay(&area_B_state_machine, 6, 1000 + area_B_situation[area_B_current_position] * 600);
+            }
+            area_B_current_position++;
+            break;
+        case 6:
+            Arm_RoughAdjustment(0);
+            if (area_B_current_position < 6)
+            {
+                State_Change_WithDelay(&area_B_state_machine, 1, 500);
+            }
+            else
+            {
+                State_Change_WithDelay(&area_B_state_machine, 7, 500);
+            }
+            break;
+        case 7:
+            break;
+        default:
+            break;
         }
-        else
-        {
-            State_Change_WithDelay(&area_B_state_machine, 6, 1000 + area_B_situation[area_A_current_position] * 600);
-        }
-        area_B_current_position++;
-        break;
-    case 6:
-        Arm_RoughAdjustment(0);
-        if (area_B_current_position < 6)
-        {
-            State_Change_WithDelay(&area_B_state_machine, 1, 500);
-        }
-        break;
-    default:
-        break;
+    }
+    
+}
+
+static uint8_t Task_Wheel_Stop_Condition()
+{
+    if (fabsf(stop_turn_radar_angle - radar_get_angle) * 8.0f < M_PI)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
     }
 }
 
@@ -200,7 +243,22 @@ static void Debug_UARTRx_Operation(void)
         break;
     case 0x12:                              // 停车
         Wheel_Stop();
-        break;         
+        break;
+    case 0x13:                              // 轮子转弯开环 后面数据依次为速度和时间
+        Wheel_Turn(((float)debug_uart_rx_buffer[1] / 256.0 - 0.5) * 0.8);
+        Task_SetRunTick_Delay(task_wheel_stop_delay, ((uint16_t)debug_uart_rx_buffer[2] << 8) + ((uint16_t)debug_uart_rx_buffer[3])); 
+        Task_Awake(task_wheel_stop_delay);
+        break;
+    case 0x14:                              // 轮子转弯 基于激光雷达给出的角度 后面数据为速度 目前只能达到最终右转90°的效果
+        Wheel_Turn(((float)debug_uart_rx_buffer[1] / 256.0 - 0.5) * 0.8);
+        stop_turn_radar_angle = radar_get_angle - M_PI_2 + 0.065;
+        if (stop_turn_radar_angle < - M_PI)
+        {
+            stop_turn_radar_angle += 2 * M_PI;
+        }
+        Task_SetExtraData(task_wheel_stop_condition1, (Task_ExtraData){.condition = Task_Wheel_Stop_Condition});
+        Task_Awake(task_wheel_stop_condition1);
+        break;
     case 0x20:
         Pump_Start();
         break;
@@ -217,12 +275,48 @@ static void Debug_UARTRx_Operation(void)
         {
             Voice_BroadCast(debug_uart_rx_buffer[1]);
         }
+        break;
     case 0xA0:
         enable_radar_control = 0;  
         break;        
     case 0xA1:
         enable_radar_control = 1;   
         break;          
+    default:
+        break;
+    }
+}
+
+static void Screen_UARTRx_Operation(void)
+{
+    if (screen_uart_rx_buffer[0] != '#')
+    {
+        return;
+    }
+    switch (screen_uart_rx_buffer[1])
+    {
+    case 'a':                               // A区的数据
+        for (uint16_t i = 0; i < 6; i++)
+        {
+            area_A_situation[i] = screen_uart_rx_buffer[2 + i] - '0';
+        }
+        break;
+    case 'b':                               // B区的数据
+        for (uint16_t i = 0; i < 4; i++)
+        {
+            area_B_sequence[i] = screen_uart_rx_buffer[2 + i] - '0';
+        }
+        for (uint16_t i = 0; i < 6; i++)
+        {
+            area_B_situation[i] = 0;
+        }
+        for (uint16_t i = 0; i < 4; i++)
+        {
+            area_B_situation[area_B_sequence[i]] = screen_uart_rx_buffer[6 + i] - '0';
+        }
+        break;
+    case 's':
+        break;
     default:
         break;
     }
@@ -235,6 +329,11 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)
         Debug_UARTRx_Operation();
         HAL_UARTEx_ReceiveToIdle_IT(&huart1, debug_uart_rx_buffer, 40);
     }
+    if (huart == &huart3)
+    {
+        Screen_UARTRx_Operation();
+        HAL_UARTEx_ReceiveToIdle_IT(&huart3, screen_uart_rx_buffer, 40);
+    }
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -244,15 +343,15 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 
 void USB_Receive(void)
 {
-    if (!enable_radar_control)
-    {
-        return;
-    }
-    sscanf((char *)usb_rx_buffer, "L:%f,A:%f", &radar_linear_speed, &radar_angle_error);
-    WheelPID_SetSpeeds(
-        (radar_linear_speed - radar_angle_error * 3),
-        (radar_linear_speed + radar_angle_error * 3),
-        (radar_linear_speed - radar_angle_error * 3),
-        (radar_linear_speed + radar_angle_error * 3)
-    );
+    // if (!enable_radar_control)
+    // {
+    //     return;
+    // }
+    sscanf((char *)usb_rx_buffer, "X:%f,Y:%f,A:%f", &radar_get_axis[0], &radar_get_axis[1], &radar_get_angle);
+    // WheelPID_SetSpeeds(
+    //     (radar_linear_speed - radar_angle_error * 1),
+    //     (radar_linear_speed + radar_angle_error * 1),
+    //     (radar_linear_speed - radar_angle_error * 1),
+    //     (radar_linear_speed + radar_angle_error * 1)
+    // );
 }

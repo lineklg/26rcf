@@ -36,11 +36,11 @@ static float WheelPID_FeedForward(float target_speed)
     float result = 0;
     if (target_speed > 0)
     {
-        result = 0.02f + 2.0f * target_speed;
+        result = 0.04f + 2.0f * target_speed;
     }
     if (target_speed < 0)
     {
-        result = -0.02f + 2.0f * target_speed;
+        result = -0.04f + 2.0f * target_speed;
     }
     return result;
     // return 0.805f * target_speed;

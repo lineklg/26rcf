@@ -274,16 +274,16 @@ void Task_Update()
                     {
                         if (task->data.condition())
                         {
-                            task->func();
                             task->end_process(task);
+                            task->func();
                         }
                     }
                     break;
                 default:
                     if ((int32_t)(tick - task->run_tick) >= 0)
                     {
-                        task->func();
                         task->end_process(task);
+                        task->func();
                     }
                     break;
                 }
