@@ -81,6 +81,8 @@ void Error_Handler(void);
 #define BM_A_EB_Pin GPIO_PIN_5
 #define BM_A_EB_GPIO_Port GPIOG
 #define BM_A_EB_EXTI_IRQn EXTI9_5_IRQn
+#define LED_Pin GPIO_PIN_7
+#define LED_GPIO_Port GPIOG
 #define PUMP_Pin GPIO_PIN_10
 #define PUMP_GPIO_Port GPIOC
 

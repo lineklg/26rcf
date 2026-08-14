@@ -27,6 +27,15 @@ void Wheel_Forward_WithTime(float speed, uint32_t time_ms);
 void Wheel_Forward_WithRadar_AxisX(float speed, float route_m);
 
 void Wheel_Forward_WithRadar_AxisY(float speed, float route_m);
+
+/**
+ * @brief 按调用瞬间的雷达角度执行斜向直行，并在到位后自动停车。
+ * @param[in] speed 车轮目标速度，符号仅表示实际运动速度。
+ * @param[in] route_m 沿调用瞬间朝向的有符号位移，单位为米。
+ * @return 无。
+ */
+void Wheel_Forward_WithRadar_CurrentAngle(float speed, float route_m);
+
 void Wheel_Stop_WithDelay(uint32_t time_ms);
 
 /**

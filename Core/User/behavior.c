@@ -13,6 +13,9 @@ ServoPosition arm_servo[3];
 
 static float wheel_target_axis;
 static float wheel_target_angle;
+static float wheel_target_start_position[2];
+static float wheel_target_direction_cos;
+static float wheel_target_direction_sin;
 static int8_t wheel_target_direction;
 
 /**
@@ -90,6 +93,33 @@ static uint8_t Wheel_Stop_Angle_Condition_Task()
     {
         return 0;
     }
+}
+
+/**
+ * @brief 判断沿调用瞬间朝向的投影位移是否已经到达目标。
+ * @return 到达目标、越过目标或雷达数据无效时返回 1，否则返回 0。
+ */
+static uint8_t Wheel_Stop_CurrentAngle_Condition_Task()
+{
+    float progress;
+    float projection_error;
+
+    if (!isfinite(radar_get_axis[0]) || !isfinite(radar_get_axis[1]) ||
+        !isfinite(radar_get_angle))
+    {
+        return 1;
+    }
+
+    progress =
+        (radar_get_axis[0] - wheel_target_start_position[0]) * wheel_target_direction_cos +
+        (radar_get_axis[1] - wheel_target_start_position[1]) * wheel_target_direction_sin;
+    projection_error = wheel_target_axis - progress;
+    if ((fabsf(projection_error) <= WHEEL_TARGET_AXIS_ERROR) ||
+        (projection_error * wheel_target_direction <= 0.0f))
+    {
+        return 1;
+    }
+    return 0;
 }
 
 void Wheel_Init(void)
@@ -176,6 +206,34 @@ void Wheel_Forward_WithRadar_AxisY(float speed, float route_m)
     wheel_target_direction = route_m > 0.0f ? 1 : -1;
     Wheel_Forward(speed);
     Task_SetExtraData(task_wheel_stop_condition1, (Task_ExtraData){.condition = Wheel_Stop_AxisY_Condition_Task});
+    Task_Awake(task_wheel_stop_condition1);
+}
+
+void Wheel_Forward_WithRadar_CurrentAngle(float speed, float route_m)
+{
+    if (!isfinite(speed) || !isfinite(route_m) ||
+        !isfinite(radar_get_axis[0]) || !isfinite(radar_get_axis[1]) ||
+        !isfinite(radar_get_angle) ||
+        (fabsf(speed) <= 0.0001f) ||
+        (fabsf(route_m) <= WHEEL_TARGET_AXIS_ERROR) ||
+        (task_wheel_stop_condition1 == NULL))
+    {
+        Wheel_Stop();
+        return;
+    }
+
+    wheel_target_axis = route_m;
+    wheel_target_direction = route_m > 0.0f ? 1 : -1;
+    wheel_target_start_position[0] = radar_get_axis[0];
+    wheel_target_start_position[1] = radar_get_axis[1];
+    wheel_target_direction_cos = cosf(radar_get_angle);
+    wheel_target_direction_sin = sinf(radar_get_angle);
+    wheel_target_angle = Wheel_NormalizeAngle(radar_get_angle);
+
+    Wheel_Forward(speed);
+    WheelPID_SetTargetAngle(wheel_target_angle);
+    enable_fix_angle = 1U;
+    Task_SetExtraData(task_wheel_stop_condition1, (Task_ExtraData){.condition = Wheel_Stop_CurrentAngle_Condition_Task});
     Task_Awake(task_wheel_stop_condition1);
 }
 

@@ -10,12 +10,15 @@
 // 0：空闲/设置 1：A区灌溉 2：移动到B区 3：B区灌溉 6:移动到终点区
 StateMachine main_state_machine; 
 
-// 0: 准备 1：移动到下一个灌溉点 2：转向左边 3：转向右边 4：语音播报 5：浇灌 6：回正 7：结束
+// 0: 准备 1：移动到下一个灌溉点 2：转向左边 3：转向右边 4：语音播报 5：浇灌 6：回正 7：结束    10: 避障路径 11：避障路径
 StateMachine area_A_state_machine;
 StateMachine area_B_state_machine;
 
 // 0: 转向 1：移动 2：转向
 StateMachine A_to_B_state_machine;
+
+// 0：向左拐弯到40° 1：向右拐弯到40° 2：向前移动0.7m 3：向前移动0.7m 5:向前移动直到回到y=0 6：角度回到0° 7:x轴移动到oa_current_set_target_x
+StateMachine A_obstacle_avoidance_state_machine;
 
 /* A区使用的变量 */
 // 干旱情况; 1：轻微干旱 2：一般干旱 3：严重干旱 对应6个位置
@@ -31,12 +34,14 @@ uint8_t area_B_current_position;
 
 /* 树莓派传输变量 */
 uint8_t usb_rx_buffer[256];
-// float radar_linear_speed;
-// float radar_angle_error;
+float radar_linear_speed;
+float radar_angle_error;
 volatile float radar_get_axis[2];
 volatile float radar_get_angle;              // 弧度制
 uint8_t rpi_ready;
 uint8_t get_radar_data;
+
+float oa_current_set_target_x;
 
 /* 屏幕传输变量 */
 uint8_t screen_uart_rx_buffer[40];
@@ -96,14 +101,12 @@ void User_Init(void)
     HAL_UARTEx_ReceiveToIdle_IT(&huart1, debug_uart_rx_buffer, 40);
     HAL_UARTEx_ReceiveToIdle_IT(&huart3, screen_uart_rx_buffer, 40);
 
-    // enable_radar_control = 0;
+    // enable_radar_control = 1;
     get_radar_data = 0;
 
     screen_set_situation[0] = 0;
     screen_set_situation[1] = 0;
     rpi_ready = 0;
-
-    // SYN_FrameInfo(&huart2, 0, "123");
 }
 
 void User_Update(void)
@@ -178,11 +181,8 @@ void Area_A_State_Change(uint16_t state_id, uint8_t enter_or_exit)
             State_Change_WithDelay(&area_A_state_machine, 2, 3700);
             break;
         case 2:
-            Arm_RoughAdjustment(1);
-            State_Change_WithDelay(&area_A_state_machine, 4, 600);
-            break;
         case 3:
-            Arm_RoughAdjustment(2);
+            Arm_RoughAdjustment(state_id == 2 ? 1 : 2);
             State_Change_WithDelay(&area_A_state_machine, 4, 600);
             break;
         case 4:
@@ -256,10 +256,10 @@ void Area_B_State_Change(uint16_t state_id, uint8_t enter_or_exit)
             State_Change_WithDelay(&area_B_state_machine, 2, 2600);
             break;
         case 1:
-            Wheel_Forward_WithRadar_AxisX(0.3, -0.8);
+            Wheel_Forward_WithRadar_AxisX(0.45, -0.8);
             WheelPID_SetTargetAngle(M_PI);
             enable_fix_angle = 1;
-            State_Change_WithDelay(&area_B_state_machine, 2, 3700);
+            State_Change_WithDelay(&area_B_state_machine, 2, 2100);
             break;
         case 2:
         case 3:
@@ -326,18 +326,18 @@ void A_to_B_State_Change(uint16_t state_id, uint8_t enter_or_exit)
         switch (state_id)
         {
         case 0:
-            Wheel_Turn_WithRadar_Angle(0.2, -M_PI_2);
-            State_Change_WithDelay(&A_to_B_state_machine, 1, 2000);
+            Wheel_Turn_WithRadar_Angle(0.3, -M_PI_2);
+            State_Change_WithDelay(&A_to_B_state_machine, 1, 1500);
             break;
         case 1:
-            Wheel_Forward_WithRadar_AxisY(0.3, -1.34);
+            Wheel_Forward_WithRadar_AxisY(0.35, -1.34);
             WheelPID_SetTargetAngle(-M_PI_2);
             enable_fix_angle = 1;
-            State_Change_WithDelay(&A_to_B_state_machine, 2, 5000);
+            State_Change_WithDelay(&A_to_B_state_machine, 2, 4500);
             break;
         case 2:
-            Wheel_Turn_WithRadar_Angle(0.2, -M_PI_2);
-            State_Change_WithDelay(&main_state_machine, 3, 2000);
+            Wheel_Turn_WithRadar_Angle(0.3, -M_PI_2);
+            State_Change_WithDelay(&main_state_machine, 3, 1500);
             StateMachine_Change(&A_to_B_state_machine, STATE_MACHINE_NO_STATE);
             break;
         default:
@@ -421,6 +421,8 @@ static void Screen_UARTRx_Operation(void)
                 HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "RPI Not Ready");
             }
         }
+        break;
+    case 'e':
         break;
     case 'r':
         CDC_Transmit_HS((uint8_t *)"START", 6);
@@ -563,22 +565,23 @@ void USB_Receive(void)
     // {
     //     return;
     // }
-    if (!strcmp((char *)usb_rx_buffer, "READY"))
-    {
-        rpi_ready = 1;
-        HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "RPI Ready");
-        return;
-    }
-    if (!get_radar_data)
-    {
-        get_radar_data = 1;
-        HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "Radar Ready");
-    }
-    sscanf((char *)usb_rx_buffer, "X:%f,Y:%f,A:%f", &radar_get_axis[0], &radar_get_axis[1], &radar_get_angle);
-    // WheelPID_SetSpeeds(
-    //     (radar_linear_speed - radar_angle_error * 1),
-    //     (radar_linear_speed + radar_angle_error * 1),
-    //     (radar_linear_speed - radar_angle_error * 1),
-    //     (radar_linear_speed + radar_angle_error * 1)
-    // );
+    // if (!strcmp((char *)usb_rx_buffer, "READY"))
+    // {
+    //     rpi_ready = 1;
+    //     HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "RPI Ready");
+    //     return;
+    // }
+    // if (!get_radar_data)
+    // {
+    //     get_radar_data = 1;
+    //     HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "Radar Ready");
+    // }
+    // sscanf((char *)usb_rx_buffer, "X:%f,Y:%f,A:%f", &radar_get_axis[0], &radar_get_axis[1], &radar_get_angle);
+    sscanf((char *)usb_rx_buffer, "L:%f,A:%f", &radar_linear_speed, &radar_angle_error);
+    WheelPID_SetSpeeds(
+        (radar_linear_speed - radar_angle_error * 1),
+        (radar_linear_speed + radar_angle_error * 1),
+        (radar_linear_speed - radar_angle_error * 1),
+        (radar_linear_speed + radar_angle_error * 1)
+    );
 }

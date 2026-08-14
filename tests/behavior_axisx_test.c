@@ -38,6 +38,8 @@ Task *task_wheel_stop_delay;
 static uint32_t fake_tick;
 static uint32_t stop_count;
 static float commanded_speed;
+static float commanded_target_angle;
+static const float test_pi = 3.14159265358979323846f;
 
 uint32_t HAL_GetTick(void)
 {
@@ -102,7 +104,7 @@ void ServoPosition_SetPosition(ServoPosition *servo, float position)
 
 void WheelPID_SetTargetAngle(float target_angle)
 {
-    (void)target_angle;
+    commanded_target_angle = target_angle;
 }
 
 void DRV8870_Brake(DRV8870_Motor *motor)
@@ -186,6 +188,7 @@ static void Reset_Fixture(void)
     fake_tick = 0U;
     stop_count = 0U;
     commanded_speed = 0.0f;
+    commanded_target_angle = 0.0f;
     radar_get_axis[0] = 0.0f;
     radar_get_axis[1] = 0.0f;
     radar_get_angle = 0.0f;
@@ -245,10 +248,104 @@ static void Test_Invalid_Command_Stops_without_Starting(void)
     assert(stop_count == 0U);
 }
 
+static void Test_CurrentAngle_Stops_On_Projected_X_Displacement(void)
+{
+    Reset_Fixture();
+    radar_get_angle = 0.0f;
+    Wheel_Forward_WithRadar_CurrentAngle(0.3f, 1.0f);
+    assert(commanded_speed == 0.3f);
+    assert(enable_fix_angle == 1U);
+    assert(commanded_target_angle == 0.0f);
+
+    radar_get_axis[0] = 0.5f;
+    radar_get_axis[1] = 0.8f;
+    Run_Task_Update();
+    assert(stop_count == 0U);
+
+    radar_get_axis[0] = 1.0f;
+    Run_Task_Update();
+    assert(stop_count == 1U);
+}
+
+static void Test_CurrentAngle_Stops_On_Projected_Y_Displacement(void)
+{
+    Reset_Fixture();
+    radar_get_angle = test_pi / 2.0f;
+    Wheel_Forward_WithRadar_CurrentAngle(0.3f, 1.0f);
+    assert(enable_fix_angle == 1U);
+    assert(fabsf(commanded_target_angle - test_pi / 2.0f) < 0.0001f);
+
+    radar_get_axis[0] = 0.8f;
+    radar_get_axis[1] = 0.5f;
+    Run_Task_Update();
+    assert(stop_count == 0U);
+
+    radar_get_axis[1] = 1.0f;
+    Run_Task_Update();
+    assert(stop_count == 1U);
+}
+
+static void Test_CurrentAngle_Uses_Diagonal_Projection(void)
+{
+    const float diagonal = 0.70710677f;
+
+    Reset_Fixture();
+    radar_get_angle = test_pi / 4.0f;
+    Wheel_Forward_WithRadar_CurrentAngle(0.3f, 1.0f);
+
+    radar_get_axis[0] = diagonal;
+    radar_get_axis[1] = -diagonal;
+    Run_Task_Update();
+    assert(stop_count == 0U);
+
+    radar_get_axis[1] = diagonal;
+    Run_Task_Update();
+    assert(stop_count == 1U);
+}
+
+static void Test_CurrentAngle_Invalid_Angle_Stops_Without_Starting(void)
+{
+    Reset_Fixture();
+    radar_get_angle = NAN;
+    Wheel_Forward_WithRadar_CurrentAngle(0.3f, 1.0f);
+    assert(commanded_speed == 0.0f);
+    assert(enable_fix_angle == 0U);
+    assert(stop_count == 0U);
+}
+
+static void Test_CurrentAngle_Supports_Negative_Route(void)
+{
+    Reset_Fixture();
+    radar_get_angle = test_pi / 4.0f;
+    Wheel_Forward_WithRadar_CurrentAngle(0.3f, -1.0f);
+
+    radar_get_axis[0] = -0.70710677f;
+    radar_get_axis[1] = -0.70710677f;
+    Run_Task_Update();
+    assert(stop_count == 1U);
+}
+
+static void Test_CurrentAngle_Invalid_Runtime_Angle_Stops(void)
+{
+    Reset_Fixture();
+    radar_get_angle = 0.0f;
+    Wheel_Forward_WithRadar_CurrentAngle(0.3f, 1.0f);
+
+    radar_get_angle = INFINITY;
+    Run_Task_Update();
+    assert(stop_count == 1U);
+}
+
 int main(void)
 {
     Test_Speed_Direction_Does_Not_Override_Positive_Route();
     Test_Negative_Route_Stops_When_X_Decreases();
     Test_Invalid_Command_Stops_without_Starting();
+    Test_CurrentAngle_Stops_On_Projected_X_Displacement();
+    Test_CurrentAngle_Stops_On_Projected_Y_Displacement();
+    Test_CurrentAngle_Uses_Diagonal_Projection();
+    Test_CurrentAngle_Invalid_Angle_Stops_Without_Starting();
+    Test_CurrentAngle_Supports_Negative_Route();
+    Test_CurrentAngle_Invalid_Runtime_Angle_Stops();
     return 0;
 }
