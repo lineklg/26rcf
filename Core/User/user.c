@@ -77,6 +77,7 @@ static void User_EmergencyStop(void)
     StateMachine_Change(&area_A_state_machine, STATE_MACHINE_NO_STATE);
     StateMachine_Change(&area_B_state_machine, STATE_MACHINE_NO_STATE);
     StateMachine_Change(&A_to_B_state_machine, STATE_MACHINE_NO_STATE);
+    StateMachine_Change(&A_obstacle_avoidance_state_machine, STATE_MACHINE_NO_STATE);
 
     __disable_irq();
     while (1)
@@ -94,6 +95,9 @@ void User_Init(void)
     StateMachine_Init(&area_A_state_machine, STATE_MACHINE_NO_STATE, Area_A_State_Change);
     StateMachine_Init(&area_B_state_machine, STATE_MACHINE_NO_STATE, Area_B_State_Change);
     StateMachine_Init(&A_to_B_state_machine, STATE_MACHINE_NO_STATE, A_to_B_State_Change);
+    StateMachine_Init(&A_obstacle_avoidance_state_machine,
+                      STATE_MACHINE_NO_STATE,
+                      A_Obstacle_Avoidance_State_Change);
     
     Arm_Init();
     Arm_RoughAdjustment(0);
