@@ -105,9 +105,10 @@ void WheelPID_Init(
         }
     }
     radar_error_pid = NULL;
-    PID_Create(&radar_error_pid, 0.2f, 0.0f, 0.0f);
+    PID_Create(&radar_error_pid, 2.5f, 0.05f, 0.0f);
     if (radar_error_pid != NULL) {
-        PID_SetOutputMax(radar_error_pid, 0.05f);
+        PID_SetOutputMax(radar_error_pid, 0.1f);
+        PID_SetIntegralMax(radar_error_pid, (radar_error_pid->output_max / radar_error_pid->ki));
     }
 }
 
@@ -224,6 +225,7 @@ void WheelPID_Stop(void)
             DRV8870_SetDutyPercent(&wheel_driver[i], 0);
         }
     }
+    enable_fix_angle = 0;
 }
 
 /**
@@ -253,7 +255,7 @@ void PID_Task(void)
         float angle_error = WheelPID_NormalizeAngle(
             radar_target_angle - radar_get_angle
         );
-        angle_output = PID_Calc(radar_error_pid, angle_error, 0.0f);
+        angle_output = PID_Calc(radar_error_pid, 0.0f, angle_error);
     }
 
     for (i = 0U; i < WHEEL_PID_COUNT; i++) {

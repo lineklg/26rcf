@@ -20,7 +20,7 @@ static void Pump_Spray_Task()
         return;
     }
     Pump_Start();
-    Task_SetRunTick_Delay(task_pump_stop, 150);
+    Task_SetRunTick_Delay(task_pump_stop, 250);
     Task_Awake(task_pump_stop);
 }
 

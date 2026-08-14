@@ -3,11 +3,13 @@
 
 #include <stdint.h>
 
+#ifndef TEST_HAL_STATUS_DEFINED
 typedef enum {
     HAL_OK = 0x00U,
     HAL_ERROR = 0x01U,
     HAL_BUSY = 0x02U
 } HAL_StatusTypeDef;
+#endif
 
 #define USBD_OK 0U
 #define USBD_BUSY 1U

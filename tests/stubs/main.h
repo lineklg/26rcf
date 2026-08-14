@@ -40,6 +40,8 @@ typedef enum {
     HAL_ERROR = 0x01U
 } HAL_StatusTypeDef;
 
+#define TEST_HAL_STATUS_DEFINED 1
+
 /**
  * @brief 主机测试使用的最小 UART 句柄。
  */

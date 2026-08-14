@@ -4,6 +4,8 @@
 #include "stm32h7xx_hal.h"
 #include "stm32h7xx_hal_tim.h"
 
+#include <math.h>
+
 DRV8870_Motor motor_ic[4];
 Encoder motor_enc[4];
 Motor motor[4];
@@ -13,35 +15,74 @@ static float wheel_target_axis;
 static float wheel_target_angle;
 static int8_t wheel_target_direction;
 
+/**
+ * @brief 将角度归一化到 [-pi, pi]。
+ * @param[in] angle 待归一化的角度，单位为弧度。
+ * @return 归一化后的角度，单位为弧度。
+ */
+static float Wheel_NormalizeAngle(float angle)
+{
+    const float pi = 3.14159265358979323846f;
+    const float two_pi = 2.0f * pi;
+
+    return remainderf(angle, two_pi);
+}
+
+/**
+ * @brief 取消当前雷达角度保持和未完成的车轮停止条件任务。
+ * @return 无。
+ */
+static void Wheel_CancelRadarAngleControl(void)
+{
+    enable_fix_angle = 0U;
+    if (task_wheel_stop_condition1 != NULL)
+    {
+        Task_Sleep(task_wheel_stop_condition1);
+    }
+}
+
 static uint8_t Wheel_Stop_AxisX_Condition_Task()
 {
-    // if (fabsf(radar_get_axis[0] - wheel_target_axisx) <= WHEEL_TARGET_AXIS_MAX_ERROR)
-    if ((radar_get_axis[0] - wheel_target_axis) * wheel_target_direction >= 0)
+    float axis_error;
+
+    if (!isfinite(radar_get_axis[0]))
     {
         return 1;
     }
-    else
+
+    axis_error = wheel_target_axis - radar_get_axis[0];
+    if ((fabsf(axis_error) <= WHEEL_TARGET_AXIS_ERROR) ||
+        (axis_error * wheel_target_direction <= 0.0f))
     {
-        return 0;
+        return 1;
     }
+    return 0;
 }
 
 static uint8_t Wheel_Stop_AxisY_Condition_Task()
 {
-    // if (fabsf(radar_get_axis[0] - wheel_target_axisx) <= WHEEL_TARGET_AXIS_MAX_ERROR)
-    if ((radar_get_axis[1] - wheel_target_axis) * wheel_target_direction >= 0)
+    float axis_error;
+
+    if (!isfinite(radar_get_axis[1]))
     {
         return 1;
     }
-    else
+
+    axis_error = wheel_target_axis - radar_get_axis[1];
+    if ((fabsf(axis_error) <= WHEEL_TARGET_AXIS_ERROR) ||
+        (axis_error * wheel_target_direction <= 0.0f))
     {
-        return 0;
+        return 1;
     }
+    return 0;
 }
 
 static uint8_t Wheel_Stop_Angle_Condition_Task()
 {
-    if (fabsf(radar_get_angle - wheel_target_angle) <= WHEEL_TARGET_ANGLE_MAX_ERROR)
+    float angle_error = Wheel_NormalizeAngle(wheel_target_angle - radar_get_angle);
+
+    if ((fabsf(angle_error) <= WHEEL_TARGET_ANGLE_MAX_ERROR) ||
+        (angle_error * wheel_target_direction <= 0.0f))
     {
         return 1;
     }
@@ -74,16 +115,19 @@ void Wheel_Init(void)
 
 void Wheel_Forward(float speed)
 {
+    Wheel_CancelRadarAngleControl();
     WheelPID_Forward(speed);
 }
 
 void Wheel_Turn(float speed)
 {
+    Wheel_CancelRadarAngleControl();
     WheelPID_Turn(speed);
 }
 
 void Wheel_Stop(void)
 {
+    Wheel_CancelRadarAngleControl();
     WheelPID_Stop();
     for (uint8_t i = 0; i < 4; i++)
     {
@@ -99,15 +143,39 @@ void Wheel_Forward_WithTime(float speed, uint32_t time_ms)
 
 void Wheel_Forward_WithRadar_AxisX(float speed, float route_m)
 {
-    if (fabsf(speed) <= 0.0001)
+    if (!isfinite(speed) || !isfinite(route_m) ||
+        !isfinite(radar_get_axis[0]) ||
+        (fabsf(speed) <= 0.0001f) ||
+        (fabsf(route_m) <= WHEEL_TARGET_AXIS_ERROR) ||
+        (task_wheel_stop_condition1 == NULL))
     {
+        Wheel_Stop();
         return;
     }
-    Wheel_Forward(speed);
+
     wheel_target_axis = radar_get_axis[0] + route_m;
-    wheel_target_axis += speed > 0 ? -WHEEL_TARGET_AXIS_ERROR : WHEEL_TARGET_AXIS_ERROR;
-    wheel_target_direction = speed > 0 ? 1 : -1;
+    wheel_target_direction = route_m > 0.0f ? 1 : -1;
+    Wheel_Forward(speed);
     Task_SetExtraData(task_wheel_stop_condition1, (Task_ExtraData){.condition = Wheel_Stop_AxisX_Condition_Task});
+    Task_Awake(task_wheel_stop_condition1);
+}
+
+void Wheel_Forward_WithRadar_AxisY(float speed, float route_m)
+{
+    if (!isfinite(speed) || !isfinite(route_m) ||
+        !isfinite(radar_get_axis[1]) ||
+        (fabsf(speed) <= 0.0001f) ||
+        (fabsf(route_m) <= WHEEL_TARGET_AXIS_ERROR) ||
+        (task_wheel_stop_condition1 == NULL))
+    {
+        Wheel_Stop();
+        return;
+    }
+
+    wheel_target_axis = radar_get_axis[1] + route_m;
+    wheel_target_direction = route_m > 0.0f ? 1 : -1;
+    Wheel_Forward(speed);
+    Task_SetExtraData(task_wheel_stop_condition1, (Task_ExtraData){.condition = Wheel_Stop_AxisY_Condition_Task});
     Task_Awake(task_wheel_stop_condition1);
 }
 
@@ -119,17 +187,26 @@ void Wheel_Stop_WithDelay(uint32_t time_ms)
 
 void Wheel_Turn_WithRadar_Angle(float speed, float angle_rad)
 {
-    Wheel_Turn(speed);
-    wheel_target_angle = radar_get_angle + angle_rad;
-    while (wheel_target_angle > M_PI)
+    float turn_angle;
+
+    if (!isfinite(speed) || !isfinite(angle_rad) || !isfinite(radar_get_angle))
     {
-        wheel_target_angle -= M_PI * 2;
+        Wheel_Stop();
+        return;
     }
-    while (wheel_target_angle < -M_PI)
+
+    turn_angle = Wheel_NormalizeAngle(angle_rad);
+    if ((fabsf(speed) <= 0.0001f) || (fabsf(turn_angle) <= 0.0001f))
     {
-        wheel_target_angle += M_PI * 2;
+        Wheel_Stop();
+        return;
     }
-    wheel_target_direction = speed > 0 ? 1 : -1;
+
+    wheel_target_direction = turn_angle > 0.0f ? 1 : -1;
+    Wheel_Turn(-copysignf(fabsf(speed), turn_angle));
+    wheel_target_angle = Wheel_NormalizeAngle(radar_get_angle + turn_angle);
+    WheelPID_SetTargetAngle(wheel_target_angle);
+    enable_fix_angle = 1U;
     Task_SetExtraData(task_wheel_stop_condition1, (Task_ExtraData){.condition = Wheel_Stop_Angle_Condition_Task});
     Task_Awake(task_wheel_stop_condition1);
 }
@@ -199,18 +276,28 @@ void Arm_RoughAdjustment(uint8_t direction)
     {
     case 0:
         ServoPosition_SetPosition(&arm_servo[0], 0);
-        ServoPosition_SetPosition(&arm_servo[1], -0.62);
-        ServoPosition_SetPosition(&arm_servo[2], -0.62);
+        ServoPosition_SetPosition(&arm_servo[1], -0.58);
+        ServoPosition_SetPosition(&arm_servo[2], -0.58);
         break;
-    case 1:
+    case 1:                         // A
         ServoPosition_SetPosition(&arm_servo[0], 0.5);
         ServoPosition_SetPosition(&arm_servo[1], 0.54);
         ServoPosition_SetPosition(&arm_servo[2], -0.07);
         break;
     case 2:
         ServoPosition_SetPosition(&arm_servo[0], -0.5);
-        ServoPosition_SetPosition(&arm_servo[1], 0.53);
-        ServoPosition_SetPosition(&arm_servo[2], -0.06);
+        ServoPosition_SetPosition(&arm_servo[1], 0.54);
+        ServoPosition_SetPosition(&arm_servo[2], -0.07);
+        break;
+    case 3:                         // B
+        ServoPosition_SetPosition(&arm_servo[0], 0.5);
+        ServoPosition_SetPosition(&arm_servo[1], 0.24);
+        ServoPosition_SetPosition(&arm_servo[2], -0.27);
+        break;
+    case 4:
+        ServoPosition_SetPosition(&arm_servo[0], -0.5);
+        ServoPosition_SetPosition(&arm_servo[1], 0.24);
+        ServoPosition_SetPosition(&arm_servo[2], -0.27);
         break;
     default:
         break;

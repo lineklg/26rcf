@@ -313,11 +313,11 @@ static void Test_Angle_PID_Applies_Opposite_Wheel_Corrections(void)
     enable_fix_angle = 1U;
     WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
     Run_Current_Tick();
-    Assert_Duties(0.02f, -0.02f, 0.02f, -0.02f);
+    Assert_Duties(-0.05f, 0.05f, -0.05f, 0.05f);
 
     WheelPID_SetTargetAngle(-0.1f);
     Run_Next_Period();
-    Assert_Duties(-0.02f, 0.02f, -0.02f, 0.02f);
+    Assert_Duties(0.05f, -0.05f, 0.05f, -0.05f);
 }
 
 /**
@@ -332,7 +332,7 @@ static void Test_Angle_PID_Limits_Output(void)
     enable_fix_angle = 1U;
     WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
     Run_Current_Tick();
-    Assert_Duties(0.05f, -0.05f, 0.05f, -0.05f);
+    Assert_Duties(-0.05f, 0.05f, -0.05f, 0.05f);
 }
 
 /**
@@ -347,7 +347,7 @@ static void Test_Angle_PID_Uses_Shortest_Angle_Error(void)
     enable_fix_angle = 1U;
     WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
     Run_Current_Tick();
-    Assert_Duties(-0.00463706f, 0.00463706f, -0.00463706f, 0.00463706f);
+    Assert_Duties(0.05f, -0.05f, 0.05f, -0.05f);
 }
 
 /**
