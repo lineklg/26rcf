@@ -35,6 +35,8 @@ uint8_t usb_rx_buffer[256];
 // float radar_angle_error;
 volatile float radar_get_axis[2];
 volatile float radar_get_angle;              // 弧度制
+uint8_t rpi_ready;
+uint8_t get_radar_data;
 
 /* 屏幕传输变量 */
 uint8_t screen_uart_rx_buffer[40];
@@ -44,7 +46,7 @@ uint8_t screen_set_situation[2];
 /* Debug */
 uint8_t debug_uart_rx_buffer[40];
 // uint8_t enable_radar_control;
-uint8_t get_radar_data;
+
 float stop_turn_radar_angle;
 
 /**
@@ -99,6 +101,7 @@ void User_Init(void)
 
     screen_set_situation[0] = 0;
     screen_set_situation[1] = 0;
+    rpi_ready = 0;
 
     // SYN_FrameInfo(&huart2, 0, "123");
 }
@@ -163,7 +166,7 @@ void Area_A_State_Change(uint16_t state_id, uint8_t enter_or_exit)
         switch (state_id)
         {
         case 0:
-            Wheel_Forward_WithRadar_AxisX(0.3, 0.57);
+            Wheel_Forward_WithRadar_AxisX(0.3, 0.6);
             WheelPID_SetTargetAngle(0.0f);
             enable_fix_angle = 1;
             State_Change_WithDelay(&area_A_state_machine, 2, 2400);
@@ -387,7 +390,10 @@ static void Screen_UARTRx_Operation(void)
         screen_set_situation[1] = 1;
         break;
     case 's':
-        if (screen_set_situation[0] && screen_set_situation[1] && get_radar_data)
+        if (screen_set_situation[0] && 
+            screen_set_situation[1] && 
+            get_radar_data &&
+            rpi_ready)
         {
             StateMachine_Change(&main_state_machine, 1);
             screen_set_situation[0] = 0;
@@ -408,7 +414,11 @@ static void Screen_UARTRx_Operation(void)
             }
             if (!get_radar_data)
             {
-                HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "Radar Not Ready!");
+                HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "Radar Not Ready");
+            }
+            if (!rpi_ready)
+            {
+                HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "RPI Not Ready");
             }
         }
         break;
@@ -553,9 +563,16 @@ void USB_Receive(void)
     // {
     //     return;
     // }
+    if (!strcmp((char *)usb_rx_buffer, "READY"))
+    {
+        rpi_ready = 1;
+        HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "RPI Ready");
+        return;
+    }
     if (!get_radar_data)
     {
         get_radar_data = 1;
+        HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "Radar Ready");
     }
     sscanf((char *)usb_rx_buffer, "X:%f,Y:%f,A:%f", &radar_get_axis[0], &radar_get_axis[1], &radar_get_angle);
     // WheelPID_SetSpeeds(

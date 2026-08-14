@@ -216,13 +216,13 @@ void Voice_BroadCast(uint16_t situation)
     switch (situation)
     {
     case 1:
-        SYN_FrameInfo(&huart2, 0, "[v16]轻微干旱");
+        SYN_FrameInfo(&huart2, 0, "[v16][t5]轻微干旱");
         break;
     case 2:
-        SYN_FrameInfo(&huart2, 0, "[v16]一般干旱");
+        SYN_FrameInfo(&huart2, 0, "[v16][t5]一般干旱");
         break;
     case 3:
-        SYN_FrameInfo(&huart2, 0, "[v16]严重干旱");
+        SYN_FrameInfo(&huart2, 0, "[v16][t5]严重干旱");
         break;
     default:
         break;
