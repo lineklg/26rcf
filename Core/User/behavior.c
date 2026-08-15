@@ -190,6 +190,11 @@ void Wheel_Forward_WithRadar_AxisX(float speed, float route_m)
     Task_Awake(task_wheel_stop_condition1);
 }
 
+void Wheel_Forward_WithRadar_AxisX_ABS(float speed, float pos)
+{
+    Wheel_Forward_WithRadar_AxisX(speed, pos - radar_get_axis[0]);
+}
+
 void Wheel_Forward_WithRadar_AxisY(float speed, float route_m)
 {
     if (!isfinite(speed) || !isfinite(route_m) ||
@@ -207,6 +212,11 @@ void Wheel_Forward_WithRadar_AxisY(float speed, float route_m)
     Wheel_Forward(speed);
     Task_SetExtraData(task_wheel_stop_condition1, (Task_ExtraData){.condition = Wheel_Stop_AxisY_Condition_Task});
     Task_Awake(task_wheel_stop_condition1);
+}
+
+void Wheel_Forward_WithRadar_AxisY_ABS(float speed, float pos)
+{
+    Wheel_Forward_WithRadar_AxisY(speed, pos - radar_get_axis[1]);
 }
 
 void Wheel_Forward_WithRadar_CurrentAngle(float speed, float route_m)
@@ -263,16 +273,23 @@ void Wheel_Turn_WithRadar_Angle(float speed, float angle_rad)
     wheel_target_direction = turn_angle > 0.0f ? 1 : -1;
     Wheel_Turn(-copysignf(fabsf(speed), turn_angle));
     wheel_target_angle = Wheel_NormalizeAngle(radar_get_angle + turn_angle);
-    WheelPID_SetTargetAngle(wheel_target_angle);
-    enable_fix_angle = 1U;
+    // WheelPID_SetTargetAngle(wheel_target_angle);
+    // enable_fix_angle = 1U;
     Task_SetExtraData(task_wheel_stop_condition1, (Task_ExtraData){.condition = Wheel_Stop_Angle_Condition_Task});
     Task_Awake(task_wheel_stop_condition1);
+}
+void Wheel_Turn_WithRadar_Angle_ABS(float speed, float angle_rad)
+{
+    Wheel_Turn_WithRadar_Angle(speed, angle_rad - radar_get_angle);
 }
 
 void Voice_BroadCast(uint16_t situation)
 {
     switch (situation)
     {
+    case 0:
+        SYN_FrameInfo(&huart2, 0, "[v16][t5]开始灌溉");
+        break;
     case 1:
         SYN_FrameInfo(&huart2, 0, "[v16][t5]轻微干旱");
         break;
@@ -339,24 +356,28 @@ void Arm_RoughAdjustment(uint8_t direction)
         break;
     case 1:                         // A
         ServoPosition_SetPosition(&arm_servo[0], 0.5);
-        ServoPosition_SetPosition(&arm_servo[1], 0.54);
+        ServoPosition_SetPosition(&arm_servo[1], 0.16);
         ServoPosition_SetPosition(&arm_servo[2], -0.07);
         break;
     case 2:
         ServoPosition_SetPosition(&arm_servo[0], -0.5);
-        ServoPosition_SetPosition(&arm_servo[1], 0.54);
+        ServoPosition_SetPosition(&arm_servo[1], 0.16);
         ServoPosition_SetPosition(&arm_servo[2], -0.07);
         break;
     case 3:                         // B
         ServoPosition_SetPosition(&arm_servo[0], 0.5);
-        ServoPosition_SetPosition(&arm_servo[1], 0.24);
+        ServoPosition_SetPosition(&arm_servo[1], -0.03);
         ServoPosition_SetPosition(&arm_servo[2], -0.27);
         break;
     case 4:
         ServoPosition_SetPosition(&arm_servo[0], -0.5);
-        ServoPosition_SetPosition(&arm_servo[1], 0.24);
+        ServoPosition_SetPosition(&arm_servo[1], -0.03);
         ServoPosition_SetPosition(&arm_servo[2], -0.27);
         break;
+    case 8:
+        ServoPosition_SetPosition(&arm_servo[0], 0);
+        ServoPosition_SetPosition(&arm_servo[1], -0.03);
+        ServoPosition_SetPosition(&arm_servo[2], -0.37);
     default:
         break;
     }

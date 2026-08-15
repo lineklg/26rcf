@@ -16,9 +16,10 @@ static float duty_output[WHEEL_PID_COUNT];
 static uint32_t duty_write_count[WHEEL_PID_COUNT];
 static float sent_target[WHEEL_PID_COUNT];
 static uint32_t send_count;
-static uint32_t angle_reset_count;
+static uint32_t pid_reset_count;
 
 UART_HandleTypeDef huart1;
+volatile float radar_get_axis[2];
 volatile float radar_get_angle;
 
 void __real_PID_ResetHistory(PID *pid);
@@ -30,7 +31,7 @@ void __real_PID_ResetHistory(PID *pid);
  */
 void __wrap_PID_ResetHistory(PID *pid)
 {
-    angle_reset_count++;
+    pid_reset_count++;
     __real_PID_ResetHistory(pid);
 }
 
@@ -116,9 +117,12 @@ static void Reset_Fixture(void)
 
     fake_tick = 0U;
     send_count = 0U;
-    angle_reset_count = 0U;
+    pid_reset_count = 0U;
+    radar_get_axis[0] = 0.0f;
+    radar_get_axis[1] = 0.0f;
     radar_get_angle = 0.0f;
     enable_fix_angle = 0U;
+    enable_fix_pos = 0U;
     for (i = 0U; i < WHEEL_PID_COUNT; i++) {
         test_motors[i] = (Motor){0};
         test_drivers[i] = (DRV8870_Motor){0};
@@ -313,15 +317,15 @@ static void Test_Angle_PID_Applies_Opposite_Wheel_Corrections(void)
     enable_fix_angle = 1U;
     WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
     Run_Current_Tick();
-    Assert_Duties(-0.05f, 0.05f, -0.05f, 0.05f);
+    Assert_Duties(-0.1f, 0.1f, -0.1f, 0.1f);
 
     WheelPID_SetTargetAngle(-0.1f);
     Run_Next_Period();
-    Assert_Duties(0.05f, -0.05f, 0.05f, -0.05f);
+    Assert_Duties(0.1f, -0.1f, 0.1f, -0.1f);
 }
 
 /**
- * @brief 验证角度 PID 修正被限制在正负 0.05。
+ * @brief 验证角度 PID 修正被限制在正负 0.1。
  * @return 无。
  */
 static void Test_Angle_PID_Limits_Output(void)
@@ -332,7 +336,7 @@ static void Test_Angle_PID_Limits_Output(void)
     enable_fix_angle = 1U;
     WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
     Run_Current_Tick();
-    Assert_Duties(-0.05f, 0.05f, -0.05f, 0.05f);
+    Assert_Duties(-0.1f, 0.1f, -0.1f, 0.1f);
 }
 
 /**
@@ -347,7 +351,7 @@ static void Test_Angle_PID_Uses_Shortest_Angle_Error(void)
     enable_fix_angle = 1U;
     WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
     Run_Current_Tick();
-    Assert_Duties(0.05f, -0.05f, 0.05f, -0.05f);
+    Assert_Duties(0.0579863f, -0.0579863f, 0.0579863f, -0.0579863f);
 }
 
 /**
@@ -360,23 +364,263 @@ static void Test_Angle_PID_Enable_Changes_Reset_History(void)
     WheelPID_SetTargetAngle(0.1f);
     WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
     Run_Current_Tick();
-    angle_reset_count = 0U;
+    pid_reset_count = 0U;
 
     enable_fix_angle = 1U;
     Run_Next_Period();
-    assert(angle_reset_count == 1U);
+    assert(pid_reset_count == 1U);
 
     enable_fix_angle = 0U;
     Run_Next_Period();
-    assert(angle_reset_count == 2U);
+    assert(pid_reset_count == 2U);
 
     enable_fix_angle = 2U;
     Run_Next_Period();
-    assert(angle_reset_count == 3U);
+    assert(pid_reset_count == 3U);
     Assert_Duties(0.0f, 0.0f, 0.0f, 0.0f);
 
     Run_Next_Period();
-    assert(angle_reset_count == 3U);
+    assert(pid_reset_count == 3U);
+}
+
+/**
+ * @brief 验证禁用位置保持时不向四轮结果叠加修正。
+ * @return 无。
+ */
+static void Test_Position_PID_Disabled_Does_Not_Change_Output(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, 0.04f);
+    enable_fix_pos = 0U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+/**
+ * @brief 验证 X 轴位置修正按航向投影后同号叠加到四轮。
+ * @return 无。
+ */
+static void Test_Position_PID_Projects_X_Correction(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, 0.04f);
+    radar_get_axis[0] = 0.0f;
+    radar_get_angle = 0.0f;
+    enable_fix_pos = 1U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(0.04f, 0.04f, 0.04f, 0.04f);
+}
+
+/**
+ * @brief 验证 Y 轴位置修正按航向投影后同号叠加到四轮。
+ * @return 无。
+ */
+static void Test_Position_PID_Projects_Y_Correction(void)
+{
+    const float pi = 3.14159265358979323846f;
+
+    Reset_Fixture();
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_Y, 0.04f);
+    radar_get_axis[1] = 0.0f;
+    radar_get_angle = pi / 2.0f;
+    enable_fix_pos = 1U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(0.04f, 0.04f, 0.04f, 0.04f);
+}
+
+/**
+ * @brief 验证位置保持使能原始值每次变化都清除共享 PID 历史。
+ * @return 无。
+ */
+static void Test_Position_PID_Enable_Changes_Reset_History(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, 0.04f);
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    pid_reset_count = 0U;
+
+    enable_fix_pos = 1U;
+    Run_Next_Period();
+    assert(pid_reset_count == 1U);
+
+    enable_fix_pos = 0U;
+    Run_Next_Period();
+    assert(pid_reset_count == 2U);
+
+    enable_fix_pos = 2U;
+    Run_Next_Period();
+    assert(pid_reset_count == 3U);
+    Assert_Duties(0.0f, 0.0f, 0.0f, 0.0f);
+
+    Run_Next_Period();
+    assert(pid_reset_count == 3U);
+}
+
+/**
+ * @brief 验证切换目标轴时清除共享位置 PID 历史。
+ * @return 无。
+ */
+static void Test_Position_PID_Axis_Change_Resets_History(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, 0.04f);
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    pid_reset_count = 0U;
+
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_Y, 0.04f);
+    assert(pid_reset_count == 1U);
+
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_Y, 0.05f);
+    assert(pid_reset_count == 1U);
+}
+
+/**
+ * @brief 验证无效目标轴不会覆盖上一次有效位置目标。
+ * @return 无。
+ */
+static void Test_Position_PID_Rejects_Invalid_Axis(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, 0.04f);
+    WheelPID_SetTargetPosition((WheelPID_PositionAxis)2, 0.08f);
+    enable_fix_pos = 1U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(0.04f, 0.04f, 0.04f, 0.04f);
+}
+
+/**
+ * @brief 验证非有限目标位置不会覆盖上一次有效位置目标。
+ * @return 无。
+ */
+static void Test_Position_PID_Rejects_Nonfinite_Target(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, 0.04f);
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, NAN);
+    enable_fix_pos = 1U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(0.04f, 0.04f, 0.04f, 0.04f);
+}
+
+/**
+ * @brief 验证非有限雷达位置不会产生位置修正。
+ * @return 无。
+ */
+static void Test_Position_PID_Ignores_Nonfinite_Feedback(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, 0.04f);
+    radar_get_axis[0] = NAN;
+    enable_fix_pos = 1U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+/**
+ * @brief 验证非有限雷达角度不会产生位置修正。
+ * @return 无。
+ */
+static void Test_Position_PID_Ignores_Nonfinite_Angle(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, 0.04f);
+    radar_get_angle = NAN;
+    enable_fix_pos = 1U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+/**
+ * @brief 验证停车时禁用位置保持并清除共享位置 PID 历史。
+ * @return 无。
+ */
+static void Test_Position_PID_Stop_Disables_And_Resets(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, 0.04f);
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    enable_fix_pos = 1U;
+    Run_Next_Period();
+    pid_reset_count = 0U;
+
+    WheelPID_Stop();
+
+    assert(enable_fix_pos == 0U);
+    assert(pid_reset_count == WHEEL_PID_COUNT + 1U);
+}
+
+/**
+ * @brief 验证车头垂直 X 轴时不产生 X 轴位置修正。
+ * @return 无。
+ */
+static void Test_Position_PID_Has_No_X_Authority_At_Right_Angle(void)
+{
+    const float pi = 3.14159265358979323846f;
+
+    Reset_Fixture();
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, 0.04f);
+    radar_get_angle = pi / 2.0f;
+    enable_fix_pos = 1U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+/**
+ * @brief 验证位置 PID 修正被限制在正负 0.1。
+ * @return 无。
+ */
+static void Test_Position_PID_Limits_Output(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, 1.0f);
+    enable_fix_pos = 1U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(0.1f, 0.1f, 0.1f, 0.1f);
+}
+
+/**
+ * @brief 验证负航向投影会反转 X 轴位置修正方向。
+ * @return 无。
+ */
+static void Test_Position_PID_Preserves_Negative_Projection_Sign(void)
+{
+    const float pi = 3.14159265358979323846f;
+
+    Reset_Fixture();
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, 0.04f);
+    radar_get_angle = pi;
+    enable_fix_pos = 1U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(-0.04f, -0.04f, -0.04f, -0.04f);
+}
+
+/**
+ * @brief 验证角度修正和位置修正按各自轮组符号同时叠加。
+ * @return 无。
+ */
+static void Test_Angle_And_Position_PID_Corrections_Combine(void)
+{
+    Reset_Fixture();
+    WheelPID_SetTargetAngle(0.04f);
+    WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_X, 0.02f);
+    enable_fix_angle = 1U;
+    enable_fix_pos = 1U;
+    WheelPID_SetSpeeds(0.0f, 0.0f, 0.0f, 0.0f);
+    Run_Current_Tick();
+    Assert_Duties(-0.08f, 0.12f, -0.08f, 0.12f);
 }
 
 /**
@@ -396,5 +640,19 @@ int main(void)
     Test_Angle_PID_Limits_Output();
     Test_Angle_PID_Uses_Shortest_Angle_Error();
     Test_Angle_PID_Enable_Changes_Reset_History();
+    Test_Position_PID_Disabled_Does_Not_Change_Output();
+    Test_Position_PID_Projects_X_Correction();
+    Test_Position_PID_Projects_Y_Correction();
+    Test_Position_PID_Enable_Changes_Reset_History();
+    Test_Position_PID_Axis_Change_Resets_History();
+    Test_Position_PID_Rejects_Invalid_Axis();
+    Test_Position_PID_Rejects_Nonfinite_Target();
+    Test_Position_PID_Ignores_Nonfinite_Feedback();
+    Test_Position_PID_Ignores_Nonfinite_Angle();
+    Test_Position_PID_Stop_Disables_And_Resets();
+    Test_Position_PID_Has_No_X_Authority_At_Right_Angle();
+    Test_Position_PID_Limits_Output();
+    Test_Position_PID_Preserves_Negative_Projection_Sign();
+    Test_Angle_And_Position_PID_Corrections_Combine();
     return 0;
 }

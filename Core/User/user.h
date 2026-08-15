@@ -33,6 +33,7 @@ void Area_A_State_Change(uint16_t state_id, uint8_t enter_or_exit);
 void Area_B_State_Change(uint16_t state_id, uint8_t enter_or_exit);
 void A_to_B_State_Change(uint16_t state_id, uint8_t enter_or_exit);
 void A_Obstacle_Avoidance_State_Change(uint16_t state_id, uint8_t enter_or_exit);
+void B_to_Finish_State_Change(uint16_t state_id, uint8_t enter_or_exit);
 void Debug_UARTRx_State_Change(uint16_t state_id, uint8_t enter_or_exit);
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size);

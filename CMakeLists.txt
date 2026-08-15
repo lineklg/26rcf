@@ -52,8 +52,6 @@ file(GLOB_RECURSE USER_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/User/*.c")
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${USER_SOURCES}
-    ${CMAKE_SOURCE_DIR}/Core/User/a_obstacle_avoidance.c
-    ${CMAKE_SOURCE_DIR}/Core/User/a_obstacle_avoidance_logic.c
     ${CMAKE_SOURCE_DIR}/Core/User/area_b_logic.c
     ${CMAKE_SOURCE_DIR}/Core/User/user.c
     ${CMAKE_SOURCE_DIR}/Core/User/behavior.c

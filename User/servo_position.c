@@ -116,6 +116,7 @@ HAL_StatusTypeDef ServoPosition_Init(
     servo->centerCompare = centerCompare;
     servo->maxCompare = maxCompare;
     servo->initialized = 0U;
+    servo->currentPosition = centerCompare;
 
     __HAL_TIM_SET_COMPARE(htim, channel, centerCompare);
 
@@ -151,6 +152,7 @@ void ServoPosition_SetPosition(ServoPosition *servo, float position)
             servo->maxCompare
         )
     );
+    servo->currentPosition = position;
 }
 
 void ServoPosition_Stop(ServoPosition *servo)

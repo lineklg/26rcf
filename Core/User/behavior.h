@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #define WHEEL_TARGET_AXIS_ERROR                     0.025            // m
-#define WHEEL_TARGET_ANGLE_MAX_ERROR                0.005            // rad
+#define WHEEL_TARGET_ANGLE_MAX_ERROR                0.160            // rad
 
 extern DRV8870_Motor motor_ic[4];  // 0-3:A-D
 extern Encoder motor_enc[4];
@@ -25,8 +25,10 @@ void Wheel_Forward_WithTime(float speed, uint32_t time_ms);
  * @return 无。
  */
 void Wheel_Forward_WithRadar_AxisX(float speed, float route_m);
+void Wheel_Forward_WithRadar_AxisX_ABS(float speed, float pos);
 
 void Wheel_Forward_WithRadar_AxisY(float speed, float route_m);
+void Wheel_Forward_WithRadar_AxisY_ABS(float speed, float pos);
 
 /**
  * @brief 按调用瞬间的雷达角度执行斜向直行，并在到位后自动停车。
@@ -45,6 +47,7 @@ void Wheel_Stop_WithDelay(uint32_t time_ms);
  * @return 无。
  */
 void Wheel_Turn_WithRadar_Angle(float speed, float angle_rad);
+void Wheel_Turn_WithRadar_Angle_ABS(float speed, float angle_rad);
 
 void Voice_BroadCast(uint16_t situation);
 

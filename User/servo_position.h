@@ -2,6 +2,7 @@
 #define SERVO_POSITION_H_
 
 #include "main.h"
+#include <stdint.h>
 
 /**
  * @brief 位置舵机使用的 PWM 输出类型。
@@ -21,14 +22,15 @@ typedef enum
  */
 typedef struct
 {
-    TIM_HandleTypeDef *htim;    /**< PWM 定时器句柄。 */
-    uint32_t channel;           /**< PWM 通道。 */
-    ServoPositionOutput output; /**< PWM 输出类型。 */
-    uint32_t pwmPeriod;         /**< 定时器自动重装载值（ARR）。 */
-    uint32_t minCompare;        /**< 最小位置对应的比较值。 */
-    uint32_t centerCompare;     /**< 中位位置对应的比较值。 */
-    uint32_t maxCompare;        /**< 最大位置对应的比较值。 */
-    uint8_t initialized;        /**< 非零表示已经成功初始化并启动 PWM。 */
+    TIM_HandleTypeDef *htim;            /**< PWM 定时器句柄。 */
+    uint32_t channel;                   /**< PWM 通道。 */
+    ServoPositionOutput output;         /**< PWM 输出类型。 */
+    uint32_t pwmPeriod;                 /**< 定时器自动重装载值（ARR）。 */
+    uint32_t minCompare;                /**< 最小位置对应的比较值。 */
+    uint32_t centerCompare;             /**< 中位位置对应的比较值。 */
+    uint32_t maxCompare;                /**< 最大位置对应的比较值。 */
+    uint8_t initialized;                /**< 非零表示已经成功初始化并启动 PWM。 */
+    float currentPosition;              /**< 当前的位置。 */
 } ServoPosition;
 
 /**

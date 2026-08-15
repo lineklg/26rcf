@@ -14,16 +14,21 @@ StateMachine main_state_machine;
 StateMachine area_A_state_machine;
 StateMachine area_B_state_machine;
 
-// 0: 转向 1：移动 2：转向
+// 0: 转向 1：快速移动 2：减速定位 3：转向
 StateMachine A_to_B_state_machine;
 
-// 0：向左拐弯到40° 1：向右拐弯到40° 2：向前移动0.7m 3：向前移动0.7m 5:向前移动直到回到y=0 6：角度回到0° 7:x轴移动到oa_current_set_target_x
+// 0：向左拐弯到40° 1：向右拐弯到40° 2：向前移动0.7m 3：向前移动0.7m 4：向左拐弯到40° 5：向右拐弯到40° 6：向前移动直到回到y=0 7：角度回到0° 8：角度修正 10：x轴移动到A_oa_current_set_target_x
 StateMachine A_obstacle_avoidance_state_machine;
+
+// 0：转向 1：快速移动 2：减速定位 3：转向 5：快速移动到终点
+StateMachine B_to_Finish_state_machine;
 
 /* A区使用的变量 */
 // 干旱情况; 1：轻微干旱 2：一般干旱 3：严重干旱 对应6个位置
 uint8_t area_A_situation[6];
 uint8_t area_A_current_position;
+float A_oa_current_set_target_x;
+int8_t A_oa_stop_condition_direction;
 
 /* B区使用的变量 */
 // 灌溉顺序;
@@ -40,8 +45,8 @@ volatile float radar_get_axis[2];
 volatile float radar_get_angle;              // 弧度制
 uint8_t rpi_ready;
 uint8_t get_radar_data;
-
-float oa_current_set_target_x;
+float radar_obstacle_pos[2];
+uint8_t radar_get_obstacle;
 
 /* 屏幕传输变量 */
 uint8_t screen_uart_rx_buffer[40];
@@ -50,9 +55,12 @@ uint8_t screen_set_situation[2];
 
 /* Debug */
 uint8_t debug_uart_rx_buffer[40];
+
+uint8_t enable_obstacle_avoidance;
+uint8_t enable_to_c_finish;
 // uint8_t enable_radar_control;
 
-float stop_turn_radar_angle;
+// float stop_turn_radar_angle;
 
 /**
  * @brief 执行串口急停并永久停机。
@@ -78,6 +86,7 @@ static void User_EmergencyStop(void)
     StateMachine_Change(&area_B_state_machine, STATE_MACHINE_NO_STATE);
     StateMachine_Change(&A_to_B_state_machine, STATE_MACHINE_NO_STATE);
     StateMachine_Change(&A_obstacle_avoidance_state_machine, STATE_MACHINE_NO_STATE);
+    StateMachine_Change(&B_to_Finish_state_machine, STATE_MACHINE_NO_STATE);
 
     __disable_irq();
     while (1)
@@ -95,9 +104,7 @@ void User_Init(void)
     StateMachine_Init(&area_A_state_machine, STATE_MACHINE_NO_STATE, Area_A_State_Change);
     StateMachine_Init(&area_B_state_machine, STATE_MACHINE_NO_STATE, Area_B_State_Change);
     StateMachine_Init(&A_to_B_state_machine, STATE_MACHINE_NO_STATE, A_to_B_State_Change);
-    StateMachine_Init(&A_obstacle_avoidance_state_machine,
-                      STATE_MACHINE_NO_STATE,
-                      A_Obstacle_Avoidance_State_Change);
+    StateMachine_Init(&A_obstacle_avoidance_state_machine, STATE_MACHINE_NO_STATE, A_Obstacle_Avoidance_State_Change);
     
     Arm_Init();
     Arm_RoughAdjustment(0);
@@ -105,12 +112,15 @@ void User_Init(void)
     HAL_UARTEx_ReceiveToIdle_IT(&huart1, debug_uart_rx_buffer, 40);
     HAL_UARTEx_ReceiveToIdle_IT(&huart3, screen_uart_rx_buffer, 40);
 
-    // enable_radar_control = 1;
-    get_radar_data = 0;
-
     screen_set_situation[0] = 0;
     screen_set_situation[1] = 0;
+    get_radar_data = 0;
     rpi_ready = 0;
+
+    // enable_radar_control = 1;
+    enable_obstacle_avoidance = 1;
+    enable_to_c_finish = 1;
+    radar_get_obstacle = 0;
 }
 
 void User_Update(void)
@@ -136,6 +146,7 @@ void Main_State_Change(uint16_t state_id, uint8_t enter_or_exit)
     case 1: 
         if (enter_or_exit == STATE_ENTER)
         {
+            Voice_BroadCast(0);
             sprintf(screen_uart_txt_buf, "A: %d%d%d%d%d%d", area_A_situation[0], area_A_situation[1], area_A_situation[2], area_A_situation[3], area_A_situation[4], area_A_situation[5]);
             HMI_UART_Send_ModifyTxt(&huart3, "page5.t0", screen_uart_txt_buf);
             sprintf(screen_uart_txt_buf, "B: %d %d %d %d", area_B_sequence[0], area_B_sequence[1], area_B_sequence[2], area_B_sequence[3]);
@@ -159,7 +170,13 @@ void Main_State_Change(uint16_t state_id, uint8_t enter_or_exit)
             area_B_current_position = 0;
         }
         break;
+    case 4:
+        break;
     case 6:
+        if (enter_or_exit == STATE_ENTER && enable_to_c_finish)
+        {
+            StateMachine_Change(&B_to_Finish_state_machine, 0);
+        }
         break;
     default:
         break;
@@ -173,13 +190,13 @@ void Area_A_State_Change(uint16_t state_id, uint8_t enter_or_exit)
         switch (state_id)
         {
         case 0:
-            Wheel_Forward_WithRadar_AxisX(0.3, 0.6);
+            Wheel_Forward_WithRadar_AxisX_ABS(0.3, 0.58);
             WheelPID_SetTargetAngle(0.0f);
             enable_fix_angle = 1;
             State_Change_WithDelay(&area_A_state_machine, 2, 2400);
             break;
         case 1:
-            Wheel_Forward_WithRadar_AxisX(0.3, 1);
+            Wheel_Forward_WithRadar_AxisX_ABS(0.3, (area_A_current_position == 2 ? 1.57 : 2.56));
             WheelPID_SetTargetAngle(0.0f);
             enable_fix_angle = 1;
             State_Change_WithDelay(&area_A_state_machine, 2, 3700);
@@ -191,7 +208,7 @@ void Area_A_State_Change(uint16_t state_id, uint8_t enter_or_exit)
             break;
         case 4:
             Voice_BroadCast(area_A_situation[area_A_current_position]);
-            State_Change_WithDelay(&area_A_state_machine, 5, 1100);
+            State_Change_WithDelay(&area_A_state_machine, 5, 900);
             break;
         case 5:
             pump_spray_time = area_A_situation[area_A_current_position];
@@ -199,11 +216,11 @@ void Area_A_State_Change(uint16_t state_id, uint8_t enter_or_exit)
             Task_Awake(task_pump_spray);
             if (area_A_current_position % 2 == 0)
             {
-                State_Change_WithDelay(&area_A_state_machine, 3, 900 + area_A_situation[area_A_current_position] * 750);
+                State_Change_WithDelay(&area_A_state_machine, 3, 700 + area_A_situation[area_A_current_position] * 750);
             }
             else
             {
-                State_Change_WithDelay(&area_A_state_machine, 6, 900 + area_A_situation[area_A_current_position] * 750);
+                State_Change_WithDelay(&area_A_state_machine, 6, 700 + area_A_situation[area_A_current_position] * 750);
             }
             area_A_current_position++;
             break;
@@ -211,7 +228,29 @@ void Area_A_State_Change(uint16_t state_id, uint8_t enter_or_exit)
             Arm_RoughAdjustment(0);
             if (area_A_current_position < 6)
             {
-                State_Change_WithDelay(&area_A_state_machine, 1, 700);
+                if (radar_get_obstacle)
+                {
+                    if (area_A_current_position == 2)
+                    {
+                        A_oa_current_set_target_x = 1.6;
+                    }
+                    else
+                    {
+                        A_oa_current_set_target_x = 2.6;
+                    }
+                    if (radar_obstacle_pos[1] > 0)
+                    {
+                        State_Change_WithDelay(&A_obstacle_avoidance_state_machine, 0, 700);
+                    }
+                    else
+                    {
+                        State_Change_WithDelay(&A_obstacle_avoidance_state_machine, 1, 700);
+                    }
+                }
+                else
+                {   
+                    State_Change_WithDelay(&area_A_state_machine, 1, 700);
+                }
             }
             else
             {
@@ -219,7 +258,7 @@ void Area_A_State_Change(uint16_t state_id, uint8_t enter_or_exit)
             }
             break;
         case 7:
-            Wheel_Forward_WithRadar_AxisX(0.3, 0.6);
+            Wheel_Forward_WithRadar_AxisX_ABS(0.3, 3.2);
             WheelPID_SetTargetAngle(0.0f);
             enable_fix_angle = 1;
             State_Change_WithDelay(&main_state_machine, 2, 2600);
@@ -254,13 +293,13 @@ void Area_B_State_Change(uint16_t state_id, uint8_t enter_or_exit)
         switch (state_id)
         {
         case 0:
-            Wheel_Forward_WithRadar_AxisX(0.3, -0.65);
+            Wheel_Forward_WithRadar_AxisX_ABS(0.55, 2.7);
             WheelPID_SetTargetAngle(M_PI);
             enable_fix_angle = 1;
             State_Change_WithDelay(&area_B_state_machine, 2, 2600);
             break;
         case 1:
-            Wheel_Forward_WithRadar_AxisX(0.45, -0.8);
+            Wheel_Forward_WithRadar_AxisX_ABS(0.55, (area_B_current_position == 2 ? 1.9 : 1.1));
             WheelPID_SetTargetAngle(M_PI);
             enable_fix_angle = 1;
             State_Change_WithDelay(&area_B_state_machine, 2, 2100);
@@ -283,7 +322,7 @@ void Area_B_State_Change(uint16_t state_id, uint8_t enter_or_exit)
         }
         case 4:
             Voice_BroadCast(area_B_situation[area_B_current_position]);
-            State_Change_WithDelay(&area_B_state_machine, 5, 1100);
+            State_Change_WithDelay(&area_B_state_machine, 5, 900);
             break;
         case 5:
         {
@@ -295,7 +334,7 @@ void Area_B_State_Change(uint16_t state_id, uint8_t enter_or_exit)
             pump_spray_time = situation;
             Task_SetRunTick_Current(task_pump_spray);
             Task_Awake(task_pump_spray);
-            Area_B_Advance_Position(&decision, 900U + situation * 750U);
+            Area_B_Advance_Position(&decision, 700U + situation * 750U);
             break;
         }
         case 6:
@@ -310,7 +349,7 @@ void Area_B_State_Change(uint16_t state_id, uint8_t enter_or_exit)
             }
             break;
         case 7:
-            Wheel_Forward_WithRadar_AxisX(0.45, -0.8);
+            Wheel_Forward_WithRadar_AxisX_ABS(0.55, 0.3);
             WheelPID_SetTargetAngle(M_PI);
             enable_fix_angle = 1;
             State_Change_WithDelay(&main_state_machine, 6, 2100);
@@ -330,19 +369,149 @@ void A_to_B_State_Change(uint16_t state_id, uint8_t enter_or_exit)
         switch (state_id)
         {
         case 0:
-            Wheel_Turn_WithRadar_Angle(0.3, -M_PI_2);
+            Wheel_Turn_WithRadar_Angle_ABS(0.3, -M_PI_2);
             State_Change_WithDelay(&A_to_B_state_machine, 1, 1500);
             break;
         case 1:
-            Wheel_Forward_WithRadar_AxisY(0.35, -1.34);
+            Wheel_Forward_WithRadar_AxisY_ABS(0.4, -1.2);
             WheelPID_SetTargetAngle(-M_PI_2);
             enable_fix_angle = 1;
-            State_Change_WithDelay(&A_to_B_state_machine, 2, 4500);
+            State_Change_WithDelay(&A_to_B_state_machine, 2, 2400);
             break;
         case 2:
-            Wheel_Turn_WithRadar_Angle(0.3, -M_PI_2);
+            Wheel_Forward_WithRadar_AxisY_ABS(0.25, -1.2);
+            WheelPID_SetTargetAngle(-M_PI_2);
+            enable_fix_angle = 1;
+            State_Change_WithDelay(&A_to_B_state_machine, 3, 1700);
+            break;
+        case 3:
+            Wheel_Turn_WithRadar_Angle_ABS(0.3, M_PI);
             State_Change_WithDelay(&main_state_machine, 3, 1500);
             StateMachine_Change(&A_to_B_state_machine, STATE_MACHINE_NO_STATE);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+static uint8_t A_Obstacle_Avoidance_Stop_Condition()
+{
+    if (!isfinite(radar_get_axis[1]))
+    {
+        return 1;
+    }
+
+    if ((fabsf(radar_get_axis[1]) <= WHEEL_TARGET_AXIS_ERROR) ||
+        (radar_get_axis[1] * A_oa_stop_condition_direction <= 0.0f))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+void A_Obstacle_Avoidance_State_Change(uint16_t state_id, uint8_t enter_or_exit)
+{
+    // A_obstacle_avoidance_state_machine;
+    if (enter_or_exit == STATE_ENTER)
+    {
+        switch (state_id)
+        {
+        case 0:
+            Wheel_Turn_WithRadar_Angle(-0.3, -35 * M_PI / 180.0 - radar_get_angle);
+            State_Change_WithDelay(&A_obstacle_avoidance_state_machine, 2, 1600);
+            break;
+        case 1:
+            Wheel_Turn_WithRadar_Angle(0.3, 35 * M_PI / 180.0 - radar_get_angle);
+            State_Change_WithDelay(&A_obstacle_avoidance_state_machine, 3, 1600);
+            break;
+        case 2:
+            Wheel_Forward_WithRadar_CurrentAngle(0.3, 0.7);
+            State_Change_WithDelay(&A_obstacle_avoidance_state_machine, 5, 2600);
+            break;
+        case 3:
+            Wheel_Forward_WithRadar_CurrentAngle(0.3, 0.7);
+            State_Change_WithDelay(&A_obstacle_avoidance_state_machine, 4, 2600);
+            break;
+        case 4:
+            Wheel_Turn_WithRadar_Angle(-0.3, -35 * M_PI / 180.0 - radar_get_angle);
+            State_Change_WithDelay(&A_obstacle_avoidance_state_machine, 6, 2600);
+            break;
+        case 5:
+            Wheel_Turn_WithRadar_Angle(0.3, 35 * M_PI / 180.0 - radar_get_angle);
+            State_Change_WithDelay(&A_obstacle_avoidance_state_machine, 6, 2600);
+            break;
+        case 6:
+            Wheel_Forward_WithRadar_CurrentAngle(0.3, 1);
+            A_oa_stop_condition_direction = radar_get_axis[1] > 0 ? 1 : -1;
+            Task_SetExtraData(task_wheel_stop_condition1, (Task_ExtraData){.condition = A_Obstacle_Avoidance_Stop_Condition});
+            Task_Awake(task_wheel_stop_condition1);
+            State_Change_WithDelay(&A_obstacle_avoidance_state_machine, 7, 2800);
+            break;
+        case 7:
+            Wheel_Turn_WithRadar_Angle_ABS(0.2, 0);
+            State_Change_WithDelay(&A_obstacle_avoidance_state_machine, 8, 1800);
+            break;
+        case 8:
+            if (radar_get_angle < 0)
+            {
+                Wheel_Turn_WithRadar_Angle_ABS(-0.1, 0);
+            }
+            if (radar_get_angle > 0)
+            {
+                Wheel_Turn_WithRadar_Angle_ABS(0.1, 0);
+            }
+            State_Change_WithDelay(&A_obstacle_avoidance_state_machine, 10, 800);
+            break;
+        case 10:
+            if (radar_get_axis[0] < A_oa_current_set_target_x)
+            {
+                Wheel_Forward_WithRadar_AxisX_ABS(0.3, A_oa_current_set_target_x - 0.02);
+            }
+            else
+            {
+                Wheel_Forward_WithRadar_AxisX_ABS(-0.3, A_oa_current_set_target_x + 0.02);
+            }
+            StateMachine_Change(&A_obstacle_avoidance_state_machine, STATE_MACHINE_NO_STATE);
+            State_Change_WithDelay(&area_A_state_machine, 2, fabsf(A_oa_current_set_target_x - radar_get_axis[0]) / 0.3 * 1000 + 300);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+void B_to_Finish_State_Change(uint16_t state_id, uint8_t enter_or_exit)
+{
+    // B_to_Finish_state_machine;
+    if (enter_or_exit == STATE_ENTER)
+    {
+        switch (state_id)
+        {
+        case 0:
+            Wheel_Turn_WithRadar_Angle_ABS(-0.3, -M_PI_2);
+            State_Change_WithDelay(&B_to_Finish_state_machine, 1, 1500);
+            break;
+        case 1:
+            Wheel_Forward_WithRadar_AxisY_ABS(0.4, -2.36);
+            WheelPID_SetTargetAngle(-M_PI_2);
+            enable_fix_angle = 1;
+            State_Change_WithDelay(&B_to_Finish_state_machine, 2, 2400);
+            break;
+        case 2:
+            Wheel_Forward_WithRadar_AxisY_ABS(0.25, -2.36);
+            WheelPID_SetTargetAngle(-M_PI_2);
+            enable_fix_angle = 1;
+            State_Change_WithDelay(&B_to_Finish_state_machine, 3, 1400);
+            break;
+        case 3:
+            Wheel_Turn_WithRadar_Angle_ABS(-0.3, 0);
+            State_Change_WithDelay(&B_to_Finish_state_machine, 5, 1500);
+            break;
+        case 5:
+            Wheel_Forward_WithRadar_AxisX_ABS(0.4, 3.25);
+            State_Change_WithDelay(&main_state_machine, STATE_MACHINE_NO_STATE, 6500);
+            StateMachine_Change(&B_to_Finish_state_machine, STATE_MACHINE_NO_STATE);
             break;
         default:
             break;
@@ -420,10 +589,10 @@ static void Screen_UARTRx_Operation(void)
             {
                 HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "Radar Not Ready");
             }
-            if (!rpi_ready)
-            {
-                HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "RPI Not Ready");
-            }
+            // if (!rpi_ready)
+            // {
+            //     HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "RPI Not Ready");
+            // }
         }
         break;
     case 'e':
@@ -474,6 +643,11 @@ static void Debug_UARTRx_Operation(void)
         WheelPID_SetTargetAngle(((float)debug_uart_rx_buffer[3] / 256.0 - 0.5) * M_PI * 2);
         enable_fix_angle = 1;
         break;
+    case 0x18:
+        Wheel_Turn_WithRadar_Angle(0.3, -M_PI_2);
+        enable_fix_pos = 1;
+        WheelPID_SetTargetPosition(WHEEL_PID_POSITION_AXIS_Y, radar_get_axis[0]);
+        break;
     /* 水泵 */
     case 0x20:                              // 开启
         Pump_Start();
@@ -515,6 +689,9 @@ static void Debug_UARTRx_Operation(void)
             ServoPosition_SetPosition(&arm_servo[debug_uart_rx_buffer[1]], ((float)debug_uart_rx_buffer[2] / 256.0 - 0.5) * 2.0);
         }
         break;
+    case 0x68:
+        Arm_RoughAdjustment(8);
+        break; 
     /* 屏幕模拟 */ 
     case 0x80:
         sprintf((char *)screen_uart_rx_buffer, "#a123123");
@@ -569,23 +746,41 @@ void USB_Receive(void)
     // {
     //     return;
     // }
-    // if (!strcmp((char *)usb_rx_buffer, "READY"))
-    // {
-    //     rpi_ready = 1;
-    //     HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "RPI Ready");
-    //     return;
-    // }
-    // if (!get_radar_data)
-    // {
-    //     get_radar_data = 1;
-    //     HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "Radar Ready");
-    // }
+    if (!strcmp((char *)usb_rx_buffer, "READY"))
+    {
+        rpi_ready = 1;
+        HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "RPI Ready");
+        return;
+    }
+    if (!get_radar_data)
+    {
+        get_radar_data = 1;
+        HMI_UART_Send_ModifyTxt(&huart3, "page5.t2", "Radar Ready");
+    }
     // sscanf((char *)usb_rx_buffer, "X:%f,Y:%f,A:%f", &radar_get_axis[0], &radar_get_axis[1], &radar_get_angle);
-    sscanf((char *)usb_rx_buffer, "L:%f,A:%f", &radar_linear_speed, &radar_angle_error);
-    WheelPID_SetSpeeds(
-        (radar_linear_speed - radar_angle_error * 1),
-        (radar_linear_speed + radar_angle_error * 1),
-        (radar_linear_speed - radar_angle_error * 1),
-        (radar_linear_speed + radar_angle_error * 1)
+    sscanf(
+        (char *)usb_rx_buffer, 
+        "X:%f,Y:%f,A:%f,BX:%f,BY:%f", 
+        &radar_get_axis[0], 
+        &radar_get_axis[1], 
+        &radar_get_angle,
+        &radar_obstacle_pos[0],
+        &radar_obstacle_pos[1]
     );
+    if (fabsf(radar_obstacle_pos[0]) < 0.001 && fabsf(radar_obstacle_pos[1]) < 0.001)
+    {
+        radar_get_obstacle = 0;
+    }
+    else
+    {
+        radar_get_obstacle = 1;
+    }
+
+    // sscanf((char *)usb_rx_buffer, "L:%f,A:%f", &radar_linear_speed, &radar_angle_error);
+    // WheelPID_SetSpeeds(
+    //     (radar_linear_speed - radar_angle_error * 1),
+    //     (radar_linear_speed + radar_angle_error * 1),
+    //     (radar_linear_speed - radar_angle_error * 1),
+    //     (radar_linear_speed + radar_angle_error * 1)
+    // );
 }

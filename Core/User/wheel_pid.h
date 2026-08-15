@@ -14,6 +14,15 @@
 /** @brief 角度保持使能，只有值为 1 时计算角度 PID。 */
 extern uint8_t enable_fix_angle;
 
+/** @brief 雷达位置保持使用的世界坐标轴。 */
+typedef enum {
+    WHEEL_PID_POSITION_AXIS_X = 0,
+    WHEEL_PID_POSITION_AXIS_Y = 1
+} WheelPID_PositionAxis;
+
+/** @brief 位置保持使能，只有值为 1 时计算位置 PID。 */
+extern uint8_t enable_fix_pos;
+
 /**
  * @brief 初始化四轮速度 PID 控制器。
  * @param[in,out] motors 四个车轮电机对象。
@@ -84,5 +93,16 @@ void WheelPID_SetK(uint8_t index, float kp, float ki, float kd);
  * @return 无。
  */
 void WheelPID_SetTargetAngle(float target_angle);
+
+/**
+ * @brief 设置单轴位置保持目标。
+ * @param[in] axis 要保持的雷达世界坐标轴。
+ * @param[in] target_position 目标位置，单位为米。
+ * @return 无。
+ */
+void WheelPID_SetTargetPosition(
+    WheelPID_PositionAxis axis,
+    float target_position
+);
 
 #endif /* WHEEL_PID_H */
